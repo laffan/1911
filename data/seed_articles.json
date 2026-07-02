@@ -1,0 +1,119 @@
+{
+  "_comment": "Sample EB1911 articles for demonstration. These are abridged, hand-entered public-domain entries so the app is fully functional before you run the full Wikisource scrape (scrape_eb1911.py). Each entry: title, volume, body, cross_references (list of target titles). build_db.py turns titles into slugs and resolves references.",
+  "articles": [
+    {
+      "title": "Aard-vark",
+      "volume": "1",
+      "body": "AARD-VARK (Dutch for \"earth-pig\"), a curious South-African quadruped, the Orycteropus capensis, allied to the armadillos and sloths, and belonging to the order Edentata. It is about the size of a badger, with a stout body, arched back, long tubular snout, large erect ears and a powerful tail. The animal burrows in the ground with great rapidity, feeding chiefly upon ants and termites, which it collects on its long viscous tongue after tearing open their nests with its strong claws. It is nocturnal and inoffensive, and its flesh is esteemed as food by the natives.",
+      "cross_references": ["Ant", "Armadillo", "Edentata"]
+    },
+    {
+      "title": "Abacus",
+      "volume": "1",
+      "body": "ABACUS (Gr. abax, a slab), an instrument for performing arithmetical calculations by means of balls or beads sliding on wires, or of counters in grooves. Instruments of this kind have been in use from remote antiquity among the Chinese, the Greeks and the Romans, and are still employed in China, Japan and Russia. In architecture the word denotes the flat slab forming the crowning member of a capital, upon which rests the architrave. In the Grecian Doric order the abacus is a square plain block; in the Ionic, Corinthian and Composite orders its sides are curved.",
+      "cross_references": ["Architrave", "Capital", "Column"]
+    },
+    {
+      "title": "Aberration Of Light",
+      "volume": "1",
+      "body": "ABERRATION OF LIGHT, in astronomy, an apparent displacement of a heavenly body owing to the motion of the earth in its orbit combined with the finite velocity of light. It was discovered by James Bradley in 1725, while attempting to detect stellar parallax. Because the observer is carried forward with the earth during the interval that the light traverses his telescope, every star appears thrown slightly forward in the direction of the earth's motion, describing in the course of a year a small ellipse. The constant of aberration is about 20.47 seconds of arc, and from it the velocity of light may be deduced.",
+      "cross_references": ["Astronomy", "Parallax", "Light"]
+    },
+    {
+      "title": "Absinthe",
+      "volume": "1",
+      "body": "ABSINTHE, a liqueur or aromatized spirit, the characteristic flavouring matter of which is derived from various species of wormwood (Artemisia absinthium). Amongst the other substances generally employed are angelica root, sweet-flag, star-anise, fennel and hyssop. The liqueur is of a pale green colour, and on the addition of water becomes cloudy owing to the separation of the essential oils. Its habitual and excessive consumption produces a form of chronic poisoning marked by convulsions and mental derangement, and its manufacture has been prohibited in several countries.",
+      "cross_references": ["Liqueur", "Wormwood"]
+    },
+    {
+      "title": "Barometer",
+      "volume": "3",
+      "body": "BAROMETER (Gr. baros, weight, and metron, measure), an instrument for measuring the pressure of the atmosphere. The mercurial barometer, invented by Evangelista Torricelli in 1643, consists of a glass tube upwards of 30 in. in length, closed at one end, filled with mercury and inverted in a cistern of the same fluid. The mercury sinks until the column it supports balances the pressure of the air, standing at the sea-level at a mean height of about 30 in. The aneroid barometer, which contains no liquid, depends upon the elastic yielding of a partially exhausted metal box to changes of pressure. The barometer is of the highest importance in meteorology and in the determination of heights.",
+      "cross_references": ["Atmosphere", "Meteorology", "Torricelli, Evangelista"]
+    },
+    {
+      "title": "Cartography",
+      "volume": "5",
+      "body": "CARTOGRAPHY, the art of constructing maps and charts. The problem of representing the curved surface of the earth upon a plane has given rise to numerous systems of projection, each possessing advantages for particular purposes. In the orthographic and stereographic projections the eye is supposed to view the sphere from without; in the conical and cylindrical the surface is developed upon a cone or cylinder. Mercator's projection, published in 1569, represents the meridians and parallels as straight lines, and though it exaggerates the polar regions it possesses the property that a line of constant bearing appears straight, whence its great value in navigation.",
+      "cross_references": ["Map", "Mercator, Gerardus", "Projection"]
+    },
+    {
+      "title": "Compass, Mariner's",
+      "volume": "6",
+      "body": "COMPASS, MARINER'S, an instrument for determining direction at sea, consisting essentially of a magnetized needle balanced upon a pivot and free to turn in a horizontal plane, so that it sets itself in the magnetic meridian. Its introduction into Europe is commonly placed in the 12th century, though the directive property of the lodestone was known much earlier in China. The card, divided into thirty-two points, is attached to the needle and read against a fixed mark called the lubber's line. The deviation of the compass caused by the iron of a ship must be corrected by compensating magnets, a matter investigated at length by Sir George Airy.",
+      "cross_references": ["Magnetism", "Lodestone", "Navigation"]
+    },
+    {
+      "title": "Edentata",
+      "volume": "8",
+      "body": "EDENTATA (Lat. \"toothless\"), an order of mammals characterized by the absence or imperfect development of teeth, which when present are destitute of enamel and of true roots. The order includes the sloths, the armadillos, the ant-eaters and the aard-vark of the Old World, together with the extinct gigantic Megatherium and Glyptodon of South America. The name is not strictly accurate, since several members possess numerous molar teeth; but all agree in the reduced or specialized character of the dentition and in peculiarities of the vertebrae.",
+      "cross_references": ["Aard-vark", "Armadillo", "Sloth", "Ant-eater"]
+    },
+    {
+      "title": "Gravitation",
+      "volume": "12",
+      "body": "GRAVITATION, that mutual action between masses of matter by virtue of which every particle attracts every other. The law was established by Sir Isaac Newton in the Principia (1687): every particle of matter attracts every other particle with a force directly proportional to the product of their masses and inversely proportional to the square of the distance between them. By this single principle Newton accounted for the fall of bodies at the earth's surface, the motions of the moon and planets, the precession of the equinoxes and the tides. The constant of gravitation was first measured by Henry Cavendish in 1798.",
+      "cross_references": ["Newton, Sir Isaac", "Astronomy", "Tide"]
+    },
+    {
+      "title": "Hydrogen",
+      "volume": "14",
+      "body": "HYDROGEN (symbol H, atomic weight 1.008), a gaseous chemical element, the lightest substance known. It was recognized as a distinct body by Henry Cavendish in 1766, who termed it inflammable air, and was named by Lavoisier from the Greek, signifying water-producer, because water is formed by its combustion. It is a colourless, tasteless and odourless gas, about one-fourteenth the weight of air, and combines with oxygen with explosive violence. It occurs free in some volcanic gases and, combined, in water and in all animal and vegetable tissues. Owing to its lightness it was formerly employed for the inflation of balloons.",
+      "cross_references": ["Oxygen", "Cavendish, Henry", "Chemistry"]
+    },
+    {
+      "title": "Logarithm",
+      "volume": "16",
+      "body": "LOGARITHM (Gr. logos, ratio, and arithmos, number), the exponent of the power to which a fixed number, called the base, must be raised in order to produce a given number. Logarithms were invented by John Napier, Baron of Merchiston, and published in 1614, with the object of shortening the labour of computation by replacing multiplication and division with addition and subtraction. Henry Briggs afterwards introduced logarithms to the base 10, which are the most convenient for numerical work. The logarithm is of fundamental importance throughout mathematics, physics and the theory of the exponential and hyperbolic functions.",
+      "cross_references": ["Napier, John", "Mathematics", "Slide Rule"]
+    },
+    {
+      "title": "Magnetism",
+      "volume": "17",
+      "body": "MAGNETISM, the name given to the class of phenomena exhibited by the lodestone and by iron and steel that have acquired similar properties. A magnet possesses two regions, called poles, near which its attractive power is greatest; like poles repel and unlike poles attract one another. A freely suspended magnet sets itself approximately north and south, a fact upon which the mariner's compass depends. The earth itself acts as a great magnet. The intimate connexion between magnetism and electricity, first revealed by Oersted's discovery in 1820 that a current deflects a compass needle, was developed by Ampere, Faraday and Maxwell into the electromagnetic theory.",
+      "cross_references": ["Electricity", "Compass, Mariner's", "Lodestone", "Faraday, Michael"]
+    },
+    {
+      "title": "Newton, Sir Isaac",
+      "volume": "19",
+      "body": "NEWTON, SIR ISAAC (1642-1727), English natural philosopher, was born at Woolsthorpe in Lincolnshire on Christmas day 1642. Educated at Trinity College, Cambridge, he was elected Lucasian professor of mathematics in 1669. His discoveries embrace the composition of white light, the invention of the reflecting telescope, the method of fluxions or the differential calculus, and above all the law of universal gravitation, set forth in the Philosophiae Naturalis Principia Mathematica of 1687. He was president of the Royal Society from 1703 until his death, and was buried in Westminster Abbey.",
+      "cross_references": ["Gravitation", "Optics", "Calculus"]
+    },
+    {
+      "title": "Optics",
+      "volume": "20",
+      "body": "OPTICS (Gr. optikos, of sight), the branch of physics which treats of light and the phenomena of vision. It is conveniently divided into geometrical optics, which deals with the rectilinear propagation, reflection and refraction of light and with the formation of images by mirrors and lenses; and physical optics, which investigates the nature of light itself, comprising the phenomena of interference, diffraction, polarization and dispersion. The rival emission and undulatory theories long contended for acceptance, the latter, championed by Huygens, Young and Fresnel, being now established, though modern researches have shown light to be electromagnetic in character.",
+      "cross_references": ["Light", "Lens", "Spectrum", "Newton, Sir Isaac"]
+    },
+    {
+      "title": "Photography",
+      "volume": "21",
+      "body": "PHOTOGRAPHY (Gr. phos, light, and graphein, to draw), the art of producing durable images by the chemical action of light. Its foundation was laid by the discovery that the salts of silver are darkened by exposure to light. The first permanent pictures were obtained by Nicephore Niepce and by L. J. M. Daguerre, whose daguerreotype process was made public in 1839; in the same year W. H. Fox Talbot announced his calotype, the first negative-positive process, from which any number of prints could be taken. The introduction of the gelatino-bromide dry plate about 1871 rendered the art rapid and convenient, and photography has since become an indispensable aid to astronomy, surveying and the reproduction of documents.",
+      "cross_references": ["Daguerreotype", "Light", "Optics"]
+    },
+    {
+      "title": "Steam-engine",
+      "volume": "25",
+      "body": "STEAM-ENGINE, a machine for converting the heat energy of steam into mechanical work. The employment of steam as a motive power was foreshadowed by the aeolipile of Hero of Alexandria, but the practical engine dates from the atmospheric engine of Thomas Newcomen (1712), used for pumping water from mines. James Watt, between 1765 and 1782, effected the fundamental improvements of the separate condenser, the double-acting cylinder and the governor, which raised the steam-engine to the first rank among prime movers and made possible the industrial revolution. The high-pressure and compound engines of later date, and the steam turbine of Sir Charles Parsons, are developments of the same principle.",
+      "cross_references": ["Watt, James", "Steam", "Turbine"]
+    },
+    {
+      "title": "Telegraph",
+      "volume": "26",
+      "body": "TELEGRAPH (Gr. tele, far, and graphein, to write), any apparatus for conveying intelligence to a distance, but in modern usage the electric telegraph. Following Oersted's discovery of the magnetic action of a current, practical systems were devised in 1837 by Cooke and Wheatstone in England and by S. F. B. Morse in America, the latter's code of dots and dashes coming into universal use. The laying of the first successful Atlantic cable in 1866 united the hemispheres, and the subsequent development of duplex and quadruplex working, and later of wireless telegraphy by Marconi, immensely extended the range and capacity of electrical communication.",
+      "cross_references": ["Electricity", "Telephone", "Morse, Samuel", "Wireless Telegraphy"]
+    },
+    {
+      "title": "Volcano",
+      "volume": "28",
+      "body": "VOLCANO, an opening in the earth's crust through which molten rock, vapours and fragmentary materials are ejected from the heated interior. The typical volcano is a conical mountain built up of successive lava-flows and beds of ash, surmounted by a crater. Eruptions are accompanied by earthquakes, by the emission of steam and gases, and by streams of lava which may travel many miles. Famous examples are Vesuvius, whose eruption in A.D. 79 overwhelmed Pompeii and Herculaneum, Etna, Stromboli and Krakatoa, the last of which in 1883 produced one of the most violent explosions on record. Volcanoes are distributed chiefly along lines of weakness in the crust, notably around the borders of the Pacific.",
+      "cross_references": ["Earthquake", "Geology", "Lava", "Vesuvius"]
+    },
+    {
+      "title": "Watt, James",
+      "volume": "28",
+      "body": "WATT, JAMES (1736-1819), Scottish engineer and inventor, was born at Greenock. While employed as instrument-maker to the university of Glasgow he was set to repair a model of Newcomen's engine, and was thereby led, in 1765, to the capital invention of the separate condenser, which enormously increased the efficiency of the steam-engine. In partnership with Matthew Boulton at the Soho works near Birmingham he perfected the rotative engine, the parallel motion and the centrifugal governor. The unit of power, the watt, is named in his honour. He died at Heathfield near Birmingham in 1819.",
+      "cross_references": ["Steam-engine", "Steam"]
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcworkspace/xcuserdata/
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Python
+__pycache__/
+*.pyc
+
+# Scraper output (regenerate with data/scrape_eb1911.py; can be large)
+data/raw/*.json
+data/raw/.scrape_state.json
+
+# SQLite sidecar files (the committed britannica.sqlite is the compacted build)
+*.sqlite-wal
+*.sqlite-shm
