@@ -53,6 +53,41 @@ def slugify(title: str) -> str:
     return text.strip("-") or "untitled"
 
 
+def normalize_authors(art: dict) -> list[dict]:
+    """Return a uniform author list [{name, initials, url}] from either source.
+
+    Scraped articles carry a rich ``authors`` list; hand-entered seed articles
+    may instead use the simpler ``author`` (str or list) / ``author_initials``
+    fields. Names are de-duplicated while preserving signing order.
+    """
+    raw = art.get("authors")
+    if not raw:
+        names = art.get("author")
+        if isinstance(names, str):
+            names = [names]
+        initials = art.get("author_initials")
+        raw = [
+            {"name": n, "initials": initials}
+            for n in (names or [])
+        ]
+
+    out: list[dict] = []
+    seen = set()
+    for entry in raw:
+        if isinstance(entry, str):
+            entry = {"name": entry}
+        name = (entry.get("name") or "").strip()
+        if not name or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        out.append({
+            "name": name,
+            "initials": (entry.get("initials") or "").strip() or None,
+            "url": entry.get("url"),
+        })
+    return out
+
+
 def first_letter(title: str) -> str:
     text = unicodedata.normalize("NFKD", title)
     text = "".join(c for c in text if not unicodedata.combining(c))
@@ -76,13 +111,19 @@ def load_articles(use_raw: bool) -> list[dict]:
         slug = slugify(title)
         if slug in by_slug:
             return  # first source wins; do not clobber
+        authors = normalize_authors(art)
         by_slug[slug] = {
             "slug": slug,
             "title": title,
             "volume": (art.get("volume") or "").strip() or None,
+            "pages": (art.get("pages") or "").strip() or None,
             "first_letter": first_letter(title),
             "body": body,
+            "author_names": "; ".join(a["name"] for a in authors) or None,
+            "previous_title": (art.get("previous") or "").strip() or None,
+            "next_title": (art.get("next") or "").strip() or None,
             "source_url": art.get("source_url"),
+            "authors": authors,
             "cross_references": [
                 c.strip() for c in art.get("cross_references", []) if c and c.strip()
             ],
@@ -131,10 +172,55 @@ def build(out_path: str, use_raw: bool) -> None:
         art["id"] = idx
         slug_to_id[art["slug"]] = idx
 
+    # Resolve previous/next reading-order titles into slugs (ids resolved lazily
+    # in the app, since a neighbour may be scraped in a later run).
+    for art in articles:
+        art["previous_slug"] = slugify(art["previous_title"]) if art["previous_title"] else None
+        art["next_slug"] = slugify(art["next_title"]) if art["next_title"] else None
+
     conn.executemany(
-        """INSERT INTO articles (id, slug, title, volume, first_letter, body, source_url)
-           VALUES (:id, :slug, :title, :volume, :first_letter, :body, :source_url)""",
+        """INSERT INTO articles
+               (id, slug, title, volume, pages, first_letter, body, author_names,
+                previous_slug, previous_title, next_slug, next_title, source_url)
+           VALUES
+               (:id, :slug, :title, :volume, :pages, :first_letter, :body, :author_names,
+                :previous_slug, :previous_title, :next_slug, :next_title, :source_url)""",
         articles,
+    )
+
+    # Normalized contributors: one `authors` row per unique person, linked to
+    # articles via `article_authors` (carrying the per-article signature).
+    author_id_by_slug: dict[str, int] = {}
+    author_rows: list[dict] = []
+    join_rows: list[dict] = []
+    for art in articles:
+        for seq, author in enumerate(art["authors"]):
+            aslug = slugify(author["name"])
+            aid = author_id_by_slug.get(aslug)
+            if aid is None:
+                aid = len(author_rows) + 1
+                author_id_by_slug[aslug] = aid
+                author_rows.append({
+                    "id": aid,
+                    "slug": aslug,
+                    "name": author["name"],
+                    "wikisource_url": author.get("url"),
+                })
+            join_rows.append({
+                "article_id": art["id"],
+                "author_id": aid,
+                "initials": author.get("initials"),
+                "seq": seq,
+            })
+    conn.executemany(
+        """INSERT INTO authors (id, slug, name, wikisource_url)
+           VALUES (:id, :slug, :name, :wikisource_url)""",
+        author_rows,
+    )
+    conn.executemany(
+        """INSERT OR IGNORE INTO article_authors (article_id, author_id, initials, seq)
+           VALUES (:article_id, :author_id, :initials, :seq)""",
+        join_rows,
     )
 
     xrefs = []
@@ -170,9 +256,11 @@ def build(out_path: str, use_raw: bool) -> None:
     conn.close()
 
     resolved = sum(1 for x in xrefs if x["to_id"])
+    with_author = sum(1 for a in articles if a["authors"])
     size_kb = os.path.getsize(out_path) / 1024
     print(f"\nWrote {out_path}")
-    print(f"  articles          : {len(articles)}")
+    print(f"  articles          : {len(articles)} ({with_author} with a named author)")
+    print(f"  contributors      : {len(author_rows)}")
     print(f"  cross-references  : {len(xrefs)} ({resolved} resolved, {len(xrefs) - resolved} dangling)")
     print(f"  file size         : {size_kb:.1f} KiB")
 

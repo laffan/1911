@@ -23,7 +23,7 @@ The public-domain source text comes from
 
 ```
 data/
-  schema.sql            SQLite schema (articles, cross_references, FTS5 index)
+  schema.sql            SQLite schema (articles, authors, cross_references, FTS5)
   seed_articles.json    Hand-entered sample articles (works out of the box)
   build_db.py           Compiles JSON sources → britannica.sqlite   (stdlib only)
   scrape_eb1911.py      Downloads the full corpus from Wikisource    (stdlib only)
@@ -33,7 +33,8 @@ app/
   Britannica1911.xcodeproj          Multiplatform Xcode project (iOS + macOS)
   Britannica1911/
     Britannica1911App.swift         App entry point
-    Views/                          ContentView, Sidebar, ArticleView, FlowLayout
+    Views/                          ContentView, Sidebar, ArticleView,
+                                    AuthorArticlesView, FlowLayout
     Models/Article.swift            Value types
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
@@ -77,25 +78,44 @@ Rebuild the app; Xcode picks up the regenerated `britannica.sqlite` automaticall
 
 ### Database (`data/schema.sql`)
 
-- **`articles`** — one row per entry (`slug`, `title`, `volume`, `first_letter`,
-  `body`, `source_url`).
-- **`articles_fts`** — an FTS5 external-content index over `title` + `body`,
-  kept in sync by triggers. Tokenizer `porter unicode61 remove_diacritics 2`
-  gives stemmed, accent-insensitive matching; results are ranked with `bm25`
-  (title weighted above body).
+- **`articles`** — one row per entry (`slug`, `title`, `volume`, `pages`,
+  `first_letter`, `body`, `author_names`, previous/next neighbours, `source_url`).
+- **`authors`** + **`article_authors`** — normalized contributor data. EB1911
+  entries are signed with the author's initials (e.g. `R. L.*`), which
+  Wikisource links to the contributor's `Author:` page. The scraper captures
+  the full name, the original initials, and the author-page URL. One `authors`
+  row per person; the join table records who signed which article (and in what
+  order for co-authored entries).
+- **`articles_fts`** — an FTS5 external-content index over `title`, `body` and
+  `author_names`, kept in sync by triggers. Tokenizer
+  `porter unicode61 remove_diacritics 2` gives stemmed, accent-insensitive
+  matching; results are ranked with `bm25` (title and author names weighted
+  above body), so searching a contributor's name surfaces their articles.
 - **`cross_references`** — "See also" links between entries. Targets are
   resolved to article ids at build time where possible; unresolved ones remain
-  visible (and become live automatically once that entry is scraped in).
+  visible (and become live automatically once that entry is scraped in). The
+  previous/next reading-order neighbours resolve the same way.
+
+### Captured metadata
+
+Per article the scraper records: **author(s)** and their signature initials,
+**volume**, **page range**, **previous/next** entry (reading order), and
+**cross-references**. Many short EB1911 entries were published unsigned, so a
+null author is expected and handled gracefully.
 
 ### App
 
 - **Browse** — an A–Z index in the sidebar; pick a letter to list its entries.
 - **Search** — type in the sidebar search field for live, ranked full-text
-  results with highlighted snippets.
-- **Read** — articles render in a serif body with a volume citation, tappable
-  **See also** cross-reference chips, and a link back to the Wikisource source.
-- Cross-reference taps push onto a navigation stack, so you can follow a chain
-  of entries and swipe/click back.
+  results with highlighted snippets. Contributor names are indexed, so you can
+  search by author too.
+- **Read** — articles render in a serif body with a volume/page citation, a
+  tappable **contributor byline**, **See also** cross-reference chips, previous/next
+  navigation, and a link back to the Wikisource source.
+- **Browse by contributor** — tap an author's name in a byline to see every
+  article they signed in the edition; tap through to any of them.
+- Cross-reference, author, and prev/next taps push onto a navigation stack, so
+  you can follow a chain of entries and swipe/click back.
 
 ## Notes & provenance
 

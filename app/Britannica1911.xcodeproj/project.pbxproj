@@ -12,6 +12,7 @@
 		191100000000000000000D03 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C03 /* SidebarView.swift */; };
 		191100000000000000000D04 /* ArticleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C04 /* ArticleView.swift */; };
 		191100000000000000000D05 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C05 /* FlowLayout.swift */; };
+		191100000000000000000D11 /* AuthorArticlesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C11 /* AuthorArticlesView.swift */; };
 		191100000000000000000D06 /* Article.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C06 /* Article.swift */; };
 		191100000000000000000D07 /* Database.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C07 /* Database.swift */; };
 		191100000000000000000D08 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C08 /* LibraryStore.swift */; };
@@ -26,6 +27,7 @@
 		191100000000000000000C03 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		191100000000000000000C04 /* ArticleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleView.swift; sourceTree = "<group>"; };
 		191100000000000000000C05 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
+		191100000000000000000C11 /* AuthorArticlesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorArticlesView.swift; sourceTree = "<group>"; };
 		191100000000000000000C06 /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
 		191100000000000000000C07 /* Database.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Database.swift; sourceTree = "<group>"; };
 		191100000000000000000C08 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
@@ -104,6 +106,7 @@
 				191100000000000000000C02 /* ContentView.swift */,
 				191100000000000000000C03 /* SidebarView.swift */,
 				191100000000000000000C04 /* ArticleView.swift */,
+				191100000000000000000C11 /* AuthorArticlesView.swift */,
 				191100000000000000000C05 /* FlowLayout.swift */,
 			);
 			path = Views;
@@ -183,6 +186,7 @@
 				191100000000000000000D02 /* ContentView.swift in Sources */,
 				191100000000000000000D03 /* SidebarView.swift in Sources */,
 				191100000000000000000D04 /* ArticleView.swift in Sources */,
+				191100000000000000000D11 /* AuthorArticlesView.swift in Sources */,
 				191100000000000000000D05 /* FlowLayout.swift in Sources */,
 				191100000000000000000D06 /* Article.swift in Sources */,
 				191100000000000000000D07 /* Database.swift in Sources */,

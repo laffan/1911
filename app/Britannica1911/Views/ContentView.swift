@@ -34,6 +34,9 @@ struct ArticleNavigator: View {
                 .navigationDestination(for: Int64.self) { id in
                     ArticleView(articleID: id)
                 }
+                .navigationDestination(for: AuthorRef.self) { author in
+                    AuthorArticlesView(author: author)
+                }
         }
     }
 }

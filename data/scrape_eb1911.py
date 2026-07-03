@@ -3,9 +3,10 @@
 
 Run this on a machine with network access (e.g. your Mac). It talks to the
 MediaWiki API, enumerates the EB1911 article subpages, fetches each page's
-wikitext, converts it to clean plain text, extracts cross-reference links, and
-writes batches of articles to data/raw/eb1911_NNNN.json. Then run build_db.py
-to compile the SQLite database the app bundles.
+wikitext, converts it to clean plain text, and extracts metadata — the signing
+contributor(s) and their initials, source volume and page range, previous/next
+entry, and cross-reference links — writing batches to data/raw/eb1911_NNNN.json.
+Then run build_db.py to compile the SQLite database the app bundles.
 
 Only the Python standard library is used, so there is nothing to install.
 
@@ -95,8 +96,21 @@ def enumerate_titles(limit: int | None, delay: float):
         time.sleep(delay)
 
 
-LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
-VOLUME_RE = re.compile(r"volume\s*=\s*([0-9]+)", re.I)
+# [[target]] or [[target|label]] — group 1 target, group 2 optional label.
+LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+# Signature links to a contributor's Author: page: [[Author:Full Name|Initials]].
+AUTHOR_RE = re.compile(r"\[\[Author:([^|\]]+)(?:\|([^\]]+))?\]\]")
+VOLUME_RE = re.compile(r"\bvolume\s*=\s*([0-9IVXLC]+)", re.I)
+# Header fields carrying reading-order and pagination metadata.
+HEADER_FIELD_RE = re.compile(r"\|\s*(previous|next|pages?)\s*=\s*([^\n|}]+)", re.I)
+
+
+def _link_label(m: "re.Match") -> str:
+    """Render a wikilink as plain text, preferring its label over its target."""
+    target, label = m.group(1), m.group(2)
+    if label is not None:
+        return label
+    return target.split("/")[-1]
 
 
 def wikitext_to_plain(wikitext: str) -> str:
@@ -106,7 +120,7 @@ def wikitext_to_plain(wikitext: str) -> str:
     text = re.sub(r"\{\{[^{}]*\}\}", "", text)  # simple templates
     text = re.sub(r"\{\{[^{}]*\}\}", "", text)  # nested pass
     text = re.sub(r"<!--.*?-->", "", text, flags=re.S)  # comments
-    text = LINK_RE.sub(lambda m: m.group(1).split("/")[-1], text)  # keep link label
+    text = LINK_RE.sub(_link_label, text)  # keep link label / title
     text = re.sub(r"\[https?://\S+\s+([^\]]+)\]", r"\1", text)  # external links
     text = re.sub(r"'''?", "", text)  # bold/italic
     text = re.sub(r"<[^>]+>", "", text)  # stray html
@@ -132,6 +146,54 @@ def extract_cross_refs(wikitext: str) -> list[str]:
     return refs[:40]
 
 
+def extract_authors(wikitext: str) -> list[dict]:
+    """Contributors that signed the article.
+
+    EB1911 articles are signed with the author's initials, which Wikisource
+    links to the contributor's ``Author:`` page, e.g.
+    ``[[Author:Richard Lydekker|R. L.*]]``. We capture the full name, the
+    original initials, and the Author-page URL. Order is preserved and
+    duplicates (an author cited both mid-text and in the signature) are merged.
+    """
+    authors: list[dict] = []
+    seen = set()
+    for m in AUTHOR_RE.finditer(wikitext):
+        name = m.group(1).strip()
+        initials = (m.group(2) or "").strip() or None
+        if not name or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        authors.append({
+            "name": name,
+            "initials": initials,
+            "url": "https://en.wikisource.org/wiki/Author:"
+                   + urllib.parse.quote(name.replace(" ", "_")),
+        })
+    return authors
+
+
+def _clean_field(value: str) -> str:
+    """Strip wiki markup from a header field value (links, quotes, braces)."""
+    value = LINK_RE.sub(_link_label, value)
+    value = re.sub(r"'''?|[{}\[\]]", "", value)
+    return value.strip()
+
+
+def extract_header_meta(wikitext: str) -> dict:
+    """Pull reading-order (previous/next) and pagination from the header."""
+    meta: dict = {}
+    for m in HEADER_FIELD_RE.finditer(wikitext):
+        key = m.group(1).lower()
+        value = _clean_field(m.group(2))
+        if not value:
+            continue
+        if key in ("page", "pages"):
+            meta.setdefault("pages", value)
+        elif key not in meta:
+            meta[key] = value
+    return meta
+
+
 def fetch_article(title: str) -> dict | None:
     data = api_get({
         "action": "query",
@@ -151,11 +213,16 @@ def fetch_article(title: str) -> dict | None:
     if len(body) < 20:
         return None
     vol = VOLUME_RE.search(wikitext)
+    meta = extract_header_meta(wikitext)
     display_title = title[len(ROOT_PREFIX):]
     return {
         "title": display_title,
         "volume": vol.group(1) if vol else None,
+        "pages": meta.get("pages"),
+        "previous": meta.get("previous"),
+        "next": meta.get("next"),
         "body": body,
+        "authors": extract_authors(wikitext),
         "cross_references": extract_cross_refs(wikitext),
         "source_url": "https://en.wikisource.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
     }

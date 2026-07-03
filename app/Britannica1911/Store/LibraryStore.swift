@@ -57,9 +57,18 @@ final class LibraryStore: ObservableObject {
         db?.crossReferences(for: id) ?? []
     }
 
+    func articles(byAuthor id: Int64) -> [ArticleSummary] {
+        db?.articles(byAuthor: id) ?? []
+    }
+
     /// Resolve a cross-reference to a concrete article id, falling back to a
     /// slug lookup for references that were not resolvable at build time.
     func resolve(_ ref: CrossReference) -> Int64? {
         ref.toID ?? db?.article(slug: ref.toSlug)?.id
+    }
+
+    /// Resolve a previous/next neighbour to an article id, if it is in the corpus.
+    func resolve(_ neighbor: Neighbor) -> Int64? {
+        db?.article(slug: neighbor.slug)?.id
     }
 }

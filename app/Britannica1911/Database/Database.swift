@@ -76,9 +76,55 @@ final class Database {
         }
     }
 
+    // MARK: - Authors
+
+    /// Contributors who signed a given article, in signing order.
+    func authors(forArticle id: Int64) -> [ArticleAuthor] {
+        query(
+            """
+            SELECT au.id, au.slug, au.name, aa.initials, au.wikisource_url
+            FROM article_authors aa
+            JOIN authors au ON au.id = aa.author_id
+            WHERE aa.article_id = ?
+            ORDER BY aa.seq
+            """,
+            bind: [.int(id)]
+        ) { stmt in
+            ArticleAuthor(
+                id: sqlite3_column_int64(stmt, 0),
+                slug: String(cString: sqlite3_column_text(stmt, 1)),
+                name: String(cString: sqlite3_column_text(stmt, 2)),
+                initials: columnTextOrNil(stmt, 3),
+                wikisourceURL: columnTextOrNil(stmt, 4)
+            )
+        }
+    }
+
+    /// Every article signed by a contributor, for the browse-by-author view.
+    func articles(byAuthor id: Int64) -> [ArticleSummary] {
+        query(
+            """
+            SELECT a.id, a.slug, a.title, a.volume
+            FROM article_authors aa
+            JOIN articles a ON a.id = aa.article_id
+            WHERE aa.author_id = ?
+            ORDER BY a.title COLLATE NOCASE
+            """,
+            bind: [.int(id)]
+        ) { stmt in
+            ArticleSummary(
+                id: sqlite3_column_int64(stmt, 0),
+                slug: String(cString: sqlite3_column_text(stmt, 1)),
+                title: String(cString: sqlite3_column_text(stmt, 2)),
+                volume: columnTextOrNil(stmt, 3)
+            )
+        }
+    }
+
     // MARK: - Search
 
     /// Full-text search ranked by bm25, with a highlighted snippet of the body.
+    /// Author names are indexed too, so searching a contributor finds their work.
     func search(_ text: String, limit: Int = 100) -> [SearchResult] {
         guard let match = Self.ftsQuery(from: text) else { return [] }
         let sql = """
@@ -87,7 +133,7 @@ final class Database {
             FROM articles_fts f
             JOIN articles a ON a.id = f.rowid
             WHERE articles_fts MATCH ?
-            ORDER BY bm25(articles_fts, 5.0, 1.0)
+            ORDER BY bm25(articles_fts, 5.0, 1.0, 3.0)
             LIMIT ?
             """
         return query(sql, bind: [.text(match), .int(Int64(limit))]) { stmt in
@@ -117,18 +163,32 @@ final class Database {
 
     private func articleRows(_ whereClause: String, bind: [Value]) -> [Article] {
         query(
-            "SELECT id, slug, title, volume, body, source_url FROM articles \(whereClause)",
+            """
+            SELECT id, slug, title, volume, pages, body, source_url,
+                   previous_slug, previous_title, next_slug, next_title
+            FROM articles \(whereClause)
+            """,
             bind: bind
         ) { stmt in
-            Article(
-                id: sqlite3_column_int64(stmt, 0),
+            let id = sqlite3_column_int64(stmt, 0)
+            return Article(
+                id: id,
                 slug: String(cString: sqlite3_column_text(stmt, 1)),
                 title: String(cString: sqlite3_column_text(stmt, 2)),
                 volume: columnTextOrNil(stmt, 3),
-                body: String(cString: sqlite3_column_text(stmt, 4)),
-                sourceURL: columnTextOrNil(stmt, 5)
+                pages: columnTextOrNil(stmt, 4),
+                body: String(cString: sqlite3_column_text(stmt, 5)),
+                authors: authors(forArticle: id),
+                previous: neighbor(columnTextOrNil(stmt, 7), columnTextOrNil(stmt, 8)),
+                next: neighbor(columnTextOrNil(stmt, 9), columnTextOrNil(stmt, 10)),
+                sourceURL: columnTextOrNil(stmt, 6)
             )
         }
+    }
+
+    private func neighbor(_ slug: String?, _ title: String?) -> Neighbor? {
+        guard let slug, let title else { return nil }
+        return Neighbor(slug: slug, title: title)
     }
 
     enum Value { case text(String), int(Int64) }

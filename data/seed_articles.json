@@ -1,9 +1,14 @@
 {
-  "_comment": "Sample EB1911 articles for demonstration. These are abridged, hand-entered public-domain entries so the app is fully functional before you run the full Wikisource scrape (scrape_eb1911.py). Each entry: title, volume, body, cross_references (list of target titles). build_db.py turns titles into slugs and resolves references.",
+  "_comment": "Sample EB1911 articles for demonstration. These are abridged, hand-entered public-domain entries so the app is fully functional before you run the full Wikisource scrape (scrape_eb1911.py). Each entry: title, volume, body, cross_references, and optional metadata (author or authors, author_initials, pages, previous, next). Authorship shown here is illustrative; the authoritative signatures come from the scraper. Richard Lydekker (R. L.*) genuinely signed the great majority of EB1911 zoology articles. build_db.py turns titles into slugs and resolves references.",
   "articles": [
     {
       "title": "Aard-vark",
       "volume": "1",
+      "pages": "4",
+      "previous": "Aardenburg",
+      "next": "Aardwolf",
+      "author": "Richard Lydekker",
+      "author_initials": "R. L.*",
       "body": "AARD-VARK (Dutch for \"earth-pig\"), a curious South-African quadruped, the Orycteropus capensis, allied to the armadillos and sloths, and belonging to the order Edentata. It is about the size of a badger, with a stout body, arched back, long tubular snout, large erect ears and a powerful tail. The animal burrows in the ground with great rapidity, feeding chiefly upon ants and termites, which it collects on its long viscous tongue after tearing open their nests with its strong claws. It is nocturnal and inoffensive, and its flesh is esteemed as food by the natives.",
       "cross_references": ["Ant", "Armadillo", "Edentata"]
     },
@@ -46,6 +51,9 @@
     {
       "title": "Edentata",
       "volume": "8",
+      "pages": "878",
+      "author": "Richard Lydekker",
+      "author_initials": "R. L.*",
       "body": "EDENTATA (Lat. \"toothless\"), an order of mammals characterized by the absence or imperfect development of teeth, which when present are destitute of enamel and of true roots. The order includes the sloths, the armadillos, the ant-eaters and the aard-vark of the Old World, together with the extinct gigantic Megatherium and Glyptodon of South America. The name is not strictly accurate, since several members possess numerous molar teeth; but all agree in the reduced or specialized character of the dentition and in peculiarities of the vertebrae.",
       "cross_references": ["Aard-vark", "Armadillo", "Sloth", "Ant-eater"]
     },

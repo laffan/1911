@@ -25,6 +25,10 @@ struct ArticleView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header(article)
 
+                if !article.authors.isEmpty {
+                    byline(article.authors)
+                }
+
                 ForEach(Array(paragraphs(article.body).enumerated()), id: \.offset) { _, para in
                     Text(para)
                         .font(.system(.body, design: .serif))
@@ -35,6 +39,8 @@ struct ArticleView: View {
                 if !refs.isEmpty {
                     crossReferenceSection(refs)
                 }
+
+                neighborNavigation(article)
 
                 if let source = article.sourceURL, let url = URL(string: source) {
                     Divider().padding(.top, 4)
@@ -58,10 +64,82 @@ struct ArticleView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(article.title)
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
-            if let volume = article.volume {
-                Text("Encyclopædia Britannica, 11th ed. · Volume \(volume)")
+            if let citation = citation(article) {
+                Text(citation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func citation(_ article: Article) -> String? {
+        var parts = ["Encyclopædia Britannica, 11th ed."]
+        if let volume = article.volume { parts.append("Volume \(volume)") }
+        if let pages = article.pages { parts.append("p. \(pages)") }
+        return parts.count > 1 ? parts.joined(separator: " · ") : parts.first
+    }
+
+    /// Tappable contributor byline. Each author leads to their collected articles.
+    private func byline(_ authors: [ArticleAuthor]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text("By")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            FlowLayout(spacing: 6) {
+                ForEach(authors) { author in
+                    NavigationLink(value: AuthorRef(id: author.id, name: author.name)) {
+                        HStack(spacing: 4) {
+                            Text(author.name)
+                            if let initials = author.initials {
+                                Text(initials)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func neighborNavigation(_ article: Article) -> some View {
+        if article.previous != nil || article.next != nil {
+            Divider().padding(.top, 4)
+            HStack(alignment: .top) {
+                neighborLink(article.previous, systemImage: "chevron.left", trailing: false)
+                Spacer(minLength: 12)
+                neighborLink(article.next, systemImage: "chevron.right", trailing: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func neighborLink(_ neighbor: Neighbor?, systemImage: String, trailing: Bool) -> some View {
+        if let neighbor {
+            let alignment: HorizontalAlignment = trailing ? .trailing : .leading
+            let content = VStack(alignment: alignment, spacing: 2) {
+                Text(trailing ? "Next" : "Previous")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    if !trailing { Image(systemName: systemImage) }
+                    Text(neighbor.title)
+                        .multilineTextAlignment(trailing ? .trailing : .leading)
+                    if trailing { Image(systemName: systemImage) }
+                }
+                .font(.callout)
+            }
+            // Navigable when the neighbour has been scraped in; plain text otherwise.
+            if let id = store.resolve(neighbor) {
+                NavigationLink(value: id) { content }.buttonStyle(.plain)
+            } else {
+                content.foregroundStyle(.secondary)
             }
         }
     }

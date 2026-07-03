@@ -8,14 +8,39 @@ struct ArticleSummary: Identifiable, Hashable {
     let volume: String?
 }
 
+/// A contributor who signed an article, with their original EB1911 initials.
+struct ArticleAuthor: Identifiable, Hashable {
+    let id: Int64
+    let slug: String
+    let name: String
+    let initials: String?
+    let wikisourceURL: String?
+}
+
+/// A neighbouring entry in the encyclopedia's reading order (prev / next).
+struct Neighbor: Hashable {
+    let slug: String
+    let title: String
+}
+
 /// A full encyclopedia entry.
 struct Article: Identifiable, Hashable {
     let id: Int64
     let slug: String
     let title: String
     let volume: String?
+    let pages: String?
     let body: String
+    let authors: [ArticleAuthor]
+    let previous: Neighbor?
+    let next: Neighbor?
     let sourceURL: String?
+}
+
+/// A reference used to navigate to a contributor's collected articles.
+struct AuthorRef: Hashable {
+    let id: Int64
+    let name: String
 }
 
 /// A "See also" link from one entry to another. `toID` is present when the
