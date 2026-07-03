@@ -12,10 +12,22 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var loadError: String?
 
+    /// Recently opened random articles (most recent first).
+    @Published private(set) var recentRandom: [RecentArticle] = []
+    /// Recently submitted / used search queries (most recent first).
+    @Published private(set) var recentSearches: [String] = []
+
     let letters: [String]
 
     private let db: Database?
     private var cancellable: AnyCancellable?
+
+    private let defaults = UserDefaults.standard
+    private let maxRecents = 15
+    private enum Keys {
+        static let recentRandom = "recentRandom"
+        static let recentSearches = "recentSearches"
+    }
 
     init() {
         do {
@@ -26,6 +38,12 @@ final class LibraryStore: ObservableObject {
             self.db = nil
             self.letters = []
             self.loadError = "Could not open the encyclopedia database: \(error)"
+        }
+
+        recentSearches = defaults.stringArray(forKey: Keys.recentSearches) ?? []
+        if let data = defaults.data(forKey: Keys.recentRandom),
+           let saved = try? JSONDecoder().decode([RecentArticle].self, from: data) {
+            recentRandom = saved
         }
 
         cancellable = $searchText
@@ -70,5 +88,45 @@ final class LibraryStore: ObservableObject {
     /// Resolve a previous/next neighbour to an article id, if it is in the corpus.
     func resolve(_ neighbor: Neighbor) -> Int64? {
         db?.article(slug: neighbor.slug)?.id
+    }
+
+    // MARK: - Random
+
+    /// Pick a random article, remember it, and return its id to open.
+    func pickRandom(excluding current: Int64?) -> Int64? {
+        guard let summary = db?.randomArticle(excluding: current) else { return nil }
+        rememberRandom(summary)
+        return summary.id
+    }
+
+    // MARK: - Recents
+
+    private func rememberRandom(_ summary: ArticleSummary) {
+        var list = recentRandom.filter { $0.slug != summary.slug }
+        list.insert(RecentArticle(slug: summary.slug, title: summary.title), at: 0)
+        recentRandom = Array(list.prefix(maxRecents))
+        if let data = try? JSONEncoder().encode(recentRandom) {
+            defaults.set(data, forKey: Keys.recentRandom)
+        }
+    }
+
+    /// Record a query the user actually searched with (deduped, case-insensitive).
+    func recordSearch(_ raw: String) {
+        let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.count >= 2 else { return }
+        var list = recentSearches.filter { $0.caseInsensitiveCompare(query) != .orderedSame }
+        list.insert(query, at: 0)
+        recentSearches = Array(list.prefix(maxRecents))
+        defaults.set(recentSearches, forKey: Keys.recentSearches)
+    }
+
+    func clearRecentRandom() {
+        recentRandom = []
+        defaults.removeObject(forKey: Keys.recentRandom)
+    }
+
+    func clearRecentSearches() {
+        recentSearches = []
+        defaults.removeObject(forKey: Keys.recentSearches)
     }
 }

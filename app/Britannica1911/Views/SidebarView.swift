@@ -19,30 +19,110 @@ struct SidebarView: View {
                 }
 
                 if store.searchText.isEmpty {
-                    Section("Browse A–Z") {
-                        ForEach(store.letters, id: \.self) { letter in
-                            NavigationLink {
-                                LetterListView(letter: letter, selection: $selection)
-                            } label: {
-                                Label(letter, systemImage: "\(letter.lowercased()).square")
-                            }
-                        }
-                    }
+                    homeSections
                 } else {
-                    Section(resultsHeader) {
-                        ForEach(store.results) { result in
-                            SearchResultRow(result: result).tag(result.id)
-                        }
-                        if store.results.isEmpty {
-                            Text("No matching articles")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    searchResultsSection
                 }
             }
             .navigationTitle("Britannica 1911")
             .searchable(text: $store.searchText, placement: .sidebar, prompt: "Search articles")
+            .onSubmit(of: .search) { store.recordSearch(store.searchText) }
+            .onChange(of: selection) { newValue in
+                // Opening a result during an active search counts as a used query.
+                if newValue != nil,
+                   !store.searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    store.recordSearch(store.searchText)
+                }
+            }
+            .toolbar {
+                ToolbarItem {
+                    Button(action: openRandom) {
+                        Label("Random article", systemImage: "die.face.5")
+                    }
+                    .help("Open a random article")
+                }
+            }
         }
+    }
+
+    // MARK: - Home (empty search) sections
+
+    @ViewBuilder
+    private var homeSections: some View {
+        Section {
+            Button(action: openRandom) {
+                Label("Random article", systemImage: "die.face.5")
+            }
+        }
+
+        if !store.recentRandom.isEmpty {
+            Section {
+                ForEach(store.recentRandom) { item in
+                    Button { open(slug: item.slug) } label: {
+                        Label(item.title, systemImage: "shuffle").lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                clearableHeader("Recent random", clear: store.clearRecentRandom)
+            }
+        }
+
+        if !store.recentSearches.isEmpty {
+            Section {
+                ForEach(store.recentSearches, id: \.self) { query in
+                    Button { store.searchText = query } label: {
+                        Label(query, systemImage: "magnifyingglass").lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                clearableHeader("Recent searches", clear: store.clearRecentSearches)
+            }
+        }
+
+        Section("Browse A–Z") {
+            ForEach(store.letters, id: \.self) { letter in
+                NavigationLink {
+                    LetterListView(letter: letter, selection: $selection)
+                } label: {
+                    Label(letter, systemImage: "\(letter.lowercased()).square")
+                }
+            }
+        }
+    }
+
+    private var searchResultsSection: some View {
+        Section(resultsHeader) {
+            ForEach(store.results) { result in
+                SearchResultRow(result: result).tag(result.id)
+            }
+            if store.results.isEmpty {
+                Text("No matching articles")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func clearableHeader(_ title: String, clear: @escaping () -> Void) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Button("Clear", action: clear)
+                .buttonStyle(.borderless)
+                .font(.caption)
+        }
+        .textCase(nil)
+    }
+
+    // MARK: - Actions
+
+    private func openRandom() {
+        if let id = store.pickRandom(excluding: selection) { selection = id }
+    }
+
+    private func open(slug: String) {
+        if let id = store.article(slug: slug)?.id { selection = id }
     }
 
     private var resultsHeader: String {

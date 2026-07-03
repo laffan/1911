@@ -128,6 +128,12 @@ null author is expected and handled gracefully.
   navigation, and a link back to the Wikisource source.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
+- **Random** — a "Random article" button (sidebar and toolbar dice) opens a
+  random entry, skipping the one already on screen.
+- **Recent** — the home sidebar remembers your history across launches (capped,
+  most-recent-first), split into **Recent random** (random articles you landed
+  on, keyed by slug so they survive database rebuilds) and **Recent searches**
+  (queries you ran; tap to re-run). Each list has its own "Clear".
 - Cross-reference, author, and prev/next taps push onto a navigation stack, so
   you can follow a chain of entries and swipe/click back.
 

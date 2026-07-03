@@ -39,6 +39,21 @@ final class Database {
         }
     }
 
+    /// A uniformly-random entry, optionally excluding the one already open.
+    func randomArticle(excluding excludedID: Int64?) -> ArticleSummary? {
+        let sql = "SELECT id, slug, title, volume FROM articles"
+            + (excludedID != nil ? " WHERE id != ?" : "")
+            + " ORDER BY RANDOM() LIMIT 1"
+        return query(sql, bind: excludedID.map { [.int($0)] } ?? []) { stmt in
+            ArticleSummary(
+                id: sqlite3_column_int64(stmt, 0),
+                slug: String(cString: sqlite3_column_text(stmt, 1)),
+                title: String(cString: sqlite3_column_text(stmt, 2)),
+                volume: columnTextOrNil(stmt, 3)
+            )
+        }.first
+    }
+
     func articles(startingWith letter: String) -> [ArticleSummary] {
         query(
             "SELECT id, slug, title, volume FROM articles WHERE first_letter = ? ORDER BY title COLLATE NOCASE",

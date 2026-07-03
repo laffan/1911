@@ -43,6 +43,14 @@ struct AuthorRef: Hashable {
     let name: String
 }
 
+/// A remembered article in the "recent random" history. Keyed by `slug` so it
+/// survives database rebuilds (where row ids may change).
+struct RecentArticle: Codable, Identifiable, Hashable {
+    let slug: String
+    let title: String
+    var id: String { slug }
+}
+
 /// A "See also" link from one entry to another. `toID` is present when the
 /// target exists in the corpus; dangling references remain browsable by title.
 struct CrossReference: Identifiable, Hashable {
