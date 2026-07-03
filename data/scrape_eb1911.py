@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import time
+from html.parser import HTMLParser
 import urllib.parse
 import urllib.request
 
@@ -194,24 +195,175 @@ def extract_header_meta(wikitext: str) -> dict:
     return meta
 
 
+# --- Rendered-HTML extraction -------------------------------------------------
+#
+# Most EB1911 pages transclude their prose from the Page: namespace via a
+# <pages /> tag, so the raw wikitext holds only the header. We therefore render
+# the page (action=parse) and pull the body, signatures and cross-references
+# from the resulting HTML, skipping navigation/header/reference chrome.
+
+# Elements whose subtree is chrome, not article prose (matched as class substrings).
+_SKIP_CLASS_SUBSTRINGS = (
+    "headertemplate", "header-template", "ws-noexport", "ws-summary", "noprint",
+    "mw-editsection", "reference", "reflist", "catlinks", "printfooter", "navbox",
+    "pagenum", "mw-cite", "sisterproject", "hatnote", "navigation-not-searchable",
+    "dynamic-navigation", "mw-empty-elt",
+)
+_SKIP_TAGS = {"style", "script", "sup"}  # <sup> here is almost always a ref marker
+_VOID_TAGS = {"br", "img", "hr", "meta", "link", "input", "col", "wbr", "area", "base", "source"}
+_BLOCK_TAGS = {"p", "div", "li", "tr", "blockquote", "dd", "dt", "section",
+               "ul", "ol", "table", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+
+class _ArticleHTMLParser(HTMLParser):
+    """Extract plain-text prose, author signatures and cross-references."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.authors: list[dict] = []
+        self.cross_refs: list[str] = []
+        self._stack: list[bool] = []      # per open tag: does it start a skipped subtree?
+        self._skip_depth = 0
+        self._author: dict | None = None  # currently-open Author: link
+        self._seen_authors: set[str] = set()
+        self._seen_refs: set[str] = set()
+
+    # -- helpers
+    def _active(self) -> bool:
+        return self._skip_depth == 0
+
+    @staticmethod
+    def _classes(attrs: dict) -> str:
+        return attrs.get("class", "") or ""
+
+    def _is_skip(self, tag: str, attrs: dict) -> bool:
+        if tag in _SKIP_TAGS:
+            return True
+        classes = self._classes(attrs)
+        if any(sub in classes for sub in _SKIP_CLASS_SUBSTRINGS):
+            return True
+        if attrs.get("role") in ("navigation", "presentation") and tag == "table":
+            return True
+        return False
+
+    # -- tag handling
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "br":
+            if self._active():
+                self.parts.append("\n")
+            return
+        if tag in _VOID_TAGS:
+            return
+        skip_here = self._is_skip(tag, a)
+        self._stack.append(skip_here)
+        if skip_here:
+            self._skip_depth += 1
+            return
+        if not self._active():
+            return
+        if tag in _BLOCK_TAGS:
+            self.parts.append("\n")
+        if tag == "a":
+            self._handle_anchor(a)
+
+    def handle_endtag(self, tag):
+        if tag in _VOID_TAGS or tag == "br":
+            return
+        if tag == "a" and self._author is not None and self._active():
+            self._finish_author()
+        if tag in _BLOCK_TAGS and self._active():
+            self.parts.append("\n")
+        if self._stack:
+            was_skip = self._stack.pop()
+            if was_skip:
+                self._skip_depth -= 1
+
+    def handle_data(self, data):
+        if not self._active():
+            return
+        # Collapse all whitespace (incl. source newlines and &nbsp;) to single
+        # spaces, so paragraph breaks come only from our explicit block markers.
+        text = re.sub(r"\s+", " ", data)
+        self.parts.append(text)
+        if self._author is not None:
+            self._author["initials"] += text
+
+    # -- links
+    def _handle_anchor(self, attrs: dict) -> None:
+        href = attrs.get("href", "")
+        if not href or "action=edit" in href or "redlink=1" in href:
+            return
+        path = urllib.parse.unquote(href)
+        if "/wiki/Author:" in path:
+            name = path.split("/wiki/Author:", 1)[1].split("#")[0].replace("_", " ").strip()
+            if name and name.lower() not in self._seen_authors:
+                self._author = {"name": name, "initials": ""}
+            return
+        marker = "/wiki/" + ROOT_PREFIX.replace(" ", "_")
+        if marker in path:
+            target = path.split(marker, 1)[1].split("#")[0].replace("_", " ").strip()
+            if target and ":" not in target and "/" not in target:
+                key = target.lower()
+                if key not in self._seen_refs:
+                    self._seen_refs.add(key)
+                    self.cross_refs.append(target)
+
+    def _finish_author(self) -> None:
+        author = self._author
+        self._author = None
+        name = author["name"]
+        if name.lower() in self._seen_authors:
+            return
+        self._seen_authors.add(name.lower())
+        self.authors.append({
+            "name": name,
+            "initials": author["initials"].strip(" ()[]") or None,
+            "url": "https://en.wikisource.org/wiki/Author:"
+                   + urllib.parse.quote(name.replace(" ", "_")),
+        })
+
+    # -- result
+    def result(self) -> tuple[str, list[dict], list[str]]:
+        text = "".join(self.parts)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r" *\n *", "\n", text)   # trim spaces around block breaks
+        text = re.sub(r"\n{3,}", "\n\n", text)  # at most one blank line between paras
+        return text.strip(), self.authors, self.cross_refs[:40]
+
+
+def parse_rendered_html(html_text: str) -> tuple[str, list[dict], list[str]]:
+    parser = _ArticleHTMLParser()
+    parser.feed(html_text)
+    return parser.result()
+
+
 def fetch_article(title: str) -> dict | None:
     data = api_get({
-        "action": "query",
-        "prop": "revisions",
-        "rvprop": "content",
-        "rvslots": "main",
-        "titles": title,
+        "action": "parse",
+        "page": title,
+        "prop": "text|wikitext",
+        "redirects": "1",
+        "disableeditsection": "1",
+        "disabletoc": "1",
     })
-    pages = data.get("query", {}).get("pages", [])
-    if not pages or "missing" in pages[0]:
+    parse = data.get("parse")
+    if not parse:
         return None
-    try:
-        wikitext = pages[0]["revisions"][0]["slots"]["main"]["content"]
-    except (KeyError, IndexError):
-        return None
-    body = wikitext_to_plain(wikitext)
+    html_text = parse.get("text") or ""
+    wikitext = parse.get("wikitext") or ""
+
+    body, authors, cross_refs = parse_rendered_html(html_text)
+    if len(body) < 20:  # fall back to raw wikitext for the rare inline article
+        body = wikitext_to_plain(wikitext)
     if len(body) < 20:
         return None
+    if not authors:
+        authors = extract_authors(wikitext)
+    if not cross_refs:
+        cross_refs = extract_cross_refs(wikitext)
+
     vol = VOLUME_RE.search(wikitext)
     meta = extract_header_meta(wikitext)
     display_title = title[len(ROOT_PREFIX):]
@@ -222,8 +374,8 @@ def fetch_article(title: str) -> dict | None:
         "previous": meta.get("previous"),
         "next": meta.get("next"),
         "body": body,
-        "authors": extract_authors(wikitext),
-        "cross_references": extract_cross_refs(wikitext),
+        "authors": authors,
+        "cross_references": cross_refs,
         "source_url": "https://en.wikisource.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
     }
 

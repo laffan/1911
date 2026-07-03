@@ -74,6 +74,20 @@ python3 build_db.py                        # compiles → app/Britannica1911/bri
 
 Rebuild the app; Xcode picks up the regenerated `britannica.sqlite` automatically.
 
+Each page is fetched **rendered** (via the MediaWiki `action=parse` API), because
+most EB1911 entries transclude their prose from the `Page:` namespace — the raw
+wikitext holds only the header, so rendering is what yields the actual article
+text, the author signature, and in-text cross-references.
+
+> **Upgrading / re-scraping:** the resume state (`data/raw/.scrape_state.json`)
+> records which titles were already fetched. If you scraped with an earlier
+> version of this script (before rendered-HTML capture) your articles will be
+> missing their bodies — clear the old output before re-running:
+> ```bash
+> rm -f data/raw/*.json data/raw/.scrape_state.json
+> python3 scrape_eb1911.py && python3 build_db.py
+> ```
+
 ## How it works
 
 ### Database (`data/schema.sql`)
