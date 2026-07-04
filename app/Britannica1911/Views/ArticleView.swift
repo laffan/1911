@@ -39,16 +39,6 @@ struct ArticleView: View {
                 if !refs.isEmpty {
                     crossReferenceSection(refs)
                 }
-
-                neighborNavigation(article)
-
-                if let source = article.sourceURL, let url = URL(string: source) {
-                    Divider().padding(.top, 4)
-                    Link(destination: url) {
-                        Label("View on Wikisource", systemImage: "safari")
-                            .font(.footnote)
-                    }
-                }
             }
             .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,6 +48,10 @@ struct ArticleView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        // Prev/next stays pinned to the bottom; the article scrolls beneath it.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            neighborBar(article)
+        }
     }
 
     private func header(_ article: Article) -> some View {
@@ -107,15 +101,23 @@ struct ArticleView: View {
         }
     }
 
+    /// A bar pinned to the bottom of the screen (via safeAreaInset) offering
+    /// previous/next reading-order navigation. Empty when the article has no
+    /// neighbours, so it takes no space.
     @ViewBuilder
-    private func neighborNavigation(_ article: Article) -> some View {
+    private func neighborBar(_ article: Article) -> some View {
         if article.previous != nil || article.next != nil {
-            Divider().padding(.top, 4)
-            HStack(alignment: .top) {
-                neighborLink(article.previous, systemImage: "chevron.left", trailing: false)
-                Spacer(minLength: 12)
-                neighborLink(article.next, systemImage: "chevron.right", trailing: true)
+            VStack(spacing: 0) {
+                Divider()
+                HStack(alignment: .center) {
+                    neighborLink(article.previous, systemImage: "chevron.left", trailing: false)
+                    Spacer(minLength: 12)
+                    neighborLink(article.next, systemImage: "chevron.right", trailing: true)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
+            .background(.bar)
         }
     }
 

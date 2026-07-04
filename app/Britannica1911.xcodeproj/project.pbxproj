@@ -9,7 +9,9 @@
 /* Begin PBXBuildFile section */
 		191100000000000000000D01 /* Britannica1911App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C01 /* Britannica1911App.swift */; };
 		191100000000000000000D02 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C02 /* ContentView.swift */; };
-		191100000000000000000D03 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C03 /* SidebarView.swift */; };
+		191100000000000000000D12 /* SearchTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C12 /* SearchTab.swift */; };
+		191100000000000000000D13 /* RandomTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C13 /* RandomTab.swift */; };
+		191100000000000000000D14 /* RecentTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C14 /* RecentTab.swift */; };
 		191100000000000000000D04 /* ArticleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C04 /* ArticleView.swift */; };
 		191100000000000000000D05 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C05 /* FlowLayout.swift */; };
 		191100000000000000000D11 /* AuthorArticlesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C11 /* AuthorArticlesView.swift */; };
@@ -24,7 +26,9 @@
 		191100000000000000000A05 /* Britannica1911.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Britannica1911.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		191100000000000000000C01 /* Britannica1911App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Britannica1911App.swift; sourceTree = "<group>"; };
 		191100000000000000000C02 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		191100000000000000000C03 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		191100000000000000000C12 /* SearchTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTab.swift; sourceTree = "<group>"; };
+		191100000000000000000C13 /* RandomTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomTab.swift; sourceTree = "<group>"; };
+		191100000000000000000C14 /* RecentTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentTab.swift; sourceTree = "<group>"; };
 		191100000000000000000C04 /* ArticleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleView.swift; sourceTree = "<group>"; };
 		191100000000000000000C05 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		191100000000000000000C11 /* AuthorArticlesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorArticlesView.swift; sourceTree = "<group>"; };
@@ -104,7 +108,9 @@
 			isa = PBXGroup;
 			children = (
 				191100000000000000000C02 /* ContentView.swift */,
-				191100000000000000000C03 /* SidebarView.swift */,
+				191100000000000000000C12 /* SearchTab.swift */,
+				191100000000000000000C13 /* RandomTab.swift */,
+				191100000000000000000C14 /* RecentTab.swift */,
 				191100000000000000000C04 /* ArticleView.swift */,
 				191100000000000000000C11 /* AuthorArticlesView.swift */,
 				191100000000000000000C05 /* FlowLayout.swift */,
@@ -184,7 +190,9 @@
 			files = (
 				191100000000000000000D01 /* Britannica1911App.swift in Sources */,
 				191100000000000000000D02 /* ContentView.swift in Sources */,
-				191100000000000000000D03 /* SidebarView.swift in Sources */,
+				191100000000000000000D12 /* SearchTab.swift in Sources */,
+				191100000000000000000D13 /* RandomTab.swift in Sources */,
+				191100000000000000000D14 /* RecentTab.swift in Sources */,
 				191100000000000000000D04 /* ArticleView.swift in Sources */,
 				191100000000000000000D11 /* AuthorArticlesView.swift in Sources */,
 				191100000000000000000D05 /* FlowLayout.swift in Sources */,

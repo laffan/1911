@@ -33,8 +33,9 @@ app/
   Britannica1911.xcodeproj          Multiplatform Xcode project (iOS + macOS)
   Britannica1911/
     Britannica1911App.swift         App entry point
-    Views/                          ContentView, Sidebar, ArticleView,
-                                    AuthorArticlesView, FlowLayout
+    Views/                          ContentView (TabView), SearchTab, RandomTab,
+                                    RecentTab, ArticleView, AuthorArticlesView,
+                                    FlowLayout
     Models/Article.swift            Value types
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
@@ -119,23 +120,30 @@ null author is expected and handled gracefully.
 
 ### App
 
-- **Browse** — an A–Z index in the sidebar; pick a letter to list its entries.
-- **Search** — type in the sidebar search field for live, ranked full-text
-  results with highlighted snippets. Contributor names are indexed, so you can
-  search by author too.
+The app is organized as a bottom tab bar with three sections — **Search**,
+**Random**, **Recent** — each with its own navigation stack.
+
+- **Search** — live, ranked full-text search with highlighted snippets;
+  contributor names are indexed, so you can search by author too. When the
+  search field is empty this tab shows the **A–Z browse** index (pick a letter
+  to list its entries).
+- **Random** — opens a random article, with a dice control to shuffle to
+  another (skipping the one on screen).
+- **Recent** — history across launches (capped, most-recent-first), split into
+  **Recent random** (random articles you opened, keyed by slug so they survive
+  database rebuilds) and **Recent searches** (queries you ran; tap one to jump
+  back to the Search tab and re-run it). Each list has its own "Clear".
 - **Read** — articles render in a serif body with a volume/page citation, a
-  tappable **contributor byline**, **See also** cross-reference chips, previous/next
-  navigation, and a link back to the Wikisource source.
+  tappable **contributor byline**, and **See also** cross-reference chips.
+  Previous/next reading-order navigation stays **pinned to the bottom** while
+  the article scrolls beneath it.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
-- **Random** — a "Random article" button (sidebar and toolbar dice) opens a
-  random entry, skipping the one already on screen.
-- **Recent** — the home sidebar remembers your history across launches (capped,
-  most-recent-first), split into **Recent random** (random articles you landed
-  on, keyed by slug so they survive database rebuilds) and **Recent searches**
-  (queries you ran; tap to re-run). Each list has its own "Clear".
-- Cross-reference, author, and prev/next taps push onto a navigation stack, so
-  you can follow a chain of entries and swipe/click back.
+- Cross-reference, author, and prev/next taps push onto the current tab's
+  navigation stack, so you can follow a chain of entries and swipe/click back.
+
+(The Wikisource source URL is still collected in the database for provenance;
+it is simply not surfaced in the reading UI.)
 
 ## Notes & provenance
 

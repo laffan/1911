@@ -1,62 +1,42 @@
 import SwiftUI
 
-/// Two-column layout: a browse/search sidebar and an article detail pane.
-/// The same layout adapts to iPhone (stack), iPad and Mac.
+/// The three primary destinations, presented as a bottom tab bar (iOS) or a
+/// tab strip (macOS).
+enum Tab: Hashable {
+    case search, random, recent
+}
+
 struct ContentView: View {
-    @EnvironmentObject var store: LibraryStore
-    @State private var selection: Int64?
+    @State private var selectedTab: Tab = .search
 
     var body: some View {
-        NavigationSplitView {
-            SidebarView(selection: $selection)
-        } detail: {
-            if let id = selection {
-                // `.id(id)` recreates the navigation stack when a new entry is
-                // chosen from the sidebar, so cross-reference history resets.
-                ArticleNavigator(rootID: id)
-                    .id(id)
-            } else {
-                PlaceholderView()
+        TabView(selection: $selectedTab) {
+            SearchTab()
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tag(Tab.search)
+
+            RandomTab()
+                .tabItem { Label("Random", systemImage: "die.face.5") }
+                .tag(Tab.random)
+
+            RecentTab(selectedTab: $selectedTab)
+                .tabItem { Label("Recent", systemImage: "clock") }
+                .tag(Tab.recent)
+        }
+    }
+}
+
+extension View {
+    /// Registers article and author navigation for an enclosing NavigationStack,
+    /// so any `NavigationLink(value:)` or `path.append(...)` of an article id or
+    /// `AuthorRef` resolves to the right screen. Applied once per tab.
+    func articleDestinations() -> some View {
+        self
+            .navigationDestination(for: Int64.self) { id in
+                ArticleView(articleID: id)
             }
-        }
-    }
-}
-
-/// A self-contained navigation stack so cross-reference links push new
-/// articles on top of the current one within the detail pane.
-struct ArticleNavigator: View {
-    let rootID: Int64
-    @State private var path: [Int64] = []
-
-    var body: some View {
-        NavigationStack(path: $path) {
-            ArticleView(articleID: rootID)
-                .navigationDestination(for: Int64.self) { id in
-                    ArticleView(articleID: id)
-                }
-                .navigationDestination(for: AuthorRef.self) { author in
-                    AuthorArticlesView(author: author)
-                }
-        }
-    }
-}
-
-struct PlaceholderView: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "book.closed")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("Encyclopædia Britannica")
-                .font(.title2.weight(.semibold))
-            Text("Eleventh Edition · 1911")
-                .foregroundStyle(.secondary)
-            Text("Search or browse A–Z to open an article.")
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-                .padding(.top, 4)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationDestination(for: AuthorRef.self) { author in
+                AuthorArticlesView(author: author)
+            }
     }
 }
