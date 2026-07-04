@@ -106,6 +106,7 @@ struct ArticleView: View {
             Text(article.title)
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .textSelection(.enabled)
+                .bookmarkable(slug: article.slug, title: article.title)
             if let citation = citation(article) {
                 Text(citation)
                     .font(.caption)

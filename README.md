@@ -33,9 +33,9 @@ app/
   Britannica1911.xcodeproj          Multiplatform Xcode project (iOS + macOS)
   Britannica1911/
     Britannica1911App.swift         App entry point
-    Views/                          ContentView (TabView), SearchTab, RandomTab,
-                                    RecentTab, ArticleView, AuthorArticlesView,
-                                    FlowLayout
+    Views/                          ContentView (TabView), BrowseTab, SearchTab,
+                                    RandomTab, BookmarksTab, ArticleView,
+                                    AuthorArticlesView, FlowLayout
     Models/Article.swift            Value types
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
@@ -120,19 +120,22 @@ null author is expected and handled gracefully.
 
 ### App
 
-The app is organized as a bottom tab bar with three sections — **Search**,
-**Random**, **Recent** — each with its own navigation stack.
+A serif-styled bottom tab bar with four sections — **Browse**, **Search**,
+**Random**, **Bookmarks** — each with its own navigation stack.
 
+- **Browse** — a three-column reading index: a scrollable list of entries for
+  one letter (title + a two-line preview with the headword removed), a
+  **sub-section scrubber** (Aa, Ab, Ac …) that shows and controls position, and
+  an **A–Z rail** to jump between letters. Entries have generous spacing and no
+  separator rules.
 - **Search** — live, ranked full-text search with highlighted snippets;
-  contributor names are indexed, so you can search by author too. When the
-  search field is empty this tab shows the **A–Z browse** grid (letter tiles);
-  picking a letter lists its entries, each with a short preview of the text.
+  contributor names are indexed, so you can search by author too. When the field
+  is empty it lists your **recent searches** (tap to re-run; "Clear" to reset).
 - **Random** — opens a random article, with a dice control to shuffle to
   another (skipping the one on screen).
-- **Recent** — history across launches (capped, most-recent-first), split into
-  **Recent random** (random articles you opened, keyed by slug so they survive
-  database rebuilds) and **Recent searches** (queries you ran; tap one to jump
-  back to the Search tab and re-run it). Each list has its own "Clear".
+- **Bookmarks** — articles you've saved. **Long-press any entry's title**
+  anywhere in the app to Bookmark it; **swipe** a row here to remove it.
+  Bookmarks persist across launches and are keyed by slug.
 - **Read** — articles render in a serif, **selectable** body with a volume/page
   citation, a tappable **contributor byline**, and **See also** cross-reference
   chips. Previous/next navigation stays **pinned to the bottom** while the
@@ -141,8 +144,6 @@ The app is organized as a bottom tab bar with three sections — **Search**,
   so Back always returns to the list you came from.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
-- Cross-reference, author, and prev/next taps push onto the current tab's
-  navigation stack, so you can follow a chain of entries and swipe/click back.
 
 (The Wikisource source URL is still collected in the database for provenance;
 it is simply not surfaced in the reading UI.)

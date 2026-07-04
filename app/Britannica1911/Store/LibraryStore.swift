@@ -12,10 +12,10 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var loadError: String?
 
-    /// Recently opened random articles (most recent first).
-    @Published private(set) var recentRandom: [RecentArticle] = []
     /// Recently submitted / used search queries (most recent first).
     @Published private(set) var recentSearches: [String] = []
+    /// Bookmarked articles (most recently added first).
+    @Published private(set) var bookmarks: [RecentArticle] = []
 
     let letters: [String]
 
@@ -25,8 +25,8 @@ final class LibraryStore: ObservableObject {
     private let defaults = UserDefaults.standard
     private let maxRecents = 15
     private enum Keys {
-        static let recentRandom = "recentRandom"
         static let recentSearches = "recentSearches"
+        static let bookmarks = "bookmarks"
     }
 
     init() {
@@ -41,9 +41,9 @@ final class LibraryStore: ObservableObject {
         }
 
         recentSearches = defaults.stringArray(forKey: Keys.recentSearches) ?? []
-        if let data = defaults.data(forKey: Keys.recentRandom),
+        if let data = defaults.data(forKey: Keys.bookmarks),
            let saved = try? JSONDecoder().decode([RecentArticle].self, from: data) {
-            recentRandom = saved
+            bookmarks = saved
         }
 
         cancellable = $searchText
@@ -92,23 +92,12 @@ final class LibraryStore: ObservableObject {
 
     // MARK: - Random
 
-    /// Pick a random article, remember it, and return its id to open.
+    /// Pick a random article, returning its id to open.
     func pickRandom(excluding current: Int64?) -> Int64? {
-        guard let summary = db?.randomArticle(excluding: current) else { return nil }
-        rememberRandom(summary)
-        return summary.id
+        db?.randomArticle(excluding: current)?.id
     }
 
-    // MARK: - Recents
-
-    private func rememberRandom(_ summary: ArticleSummary) {
-        var list = recentRandom.filter { $0.slug != summary.slug }
-        list.insert(RecentArticle(slug: summary.slug, title: summary.title), at: 0)
-        recentRandom = Array(list.prefix(maxRecents))
-        if let data = try? JSONEncoder().encode(recentRandom) {
-            defaults.set(data, forKey: Keys.recentRandom)
-        }
-    }
+    // MARK: - Recent searches
 
     /// Record a query the user actually searched with (deduped, case-insensitive).
     func recordSearch(_ raw: String) {
@@ -120,13 +109,34 @@ final class LibraryStore: ObservableObject {
         defaults.set(recentSearches, forKey: Keys.recentSearches)
     }
 
-    func clearRecentRandom() {
-        recentRandom = []
-        defaults.removeObject(forKey: Keys.recentRandom)
-    }
-
     func clearRecentSearches() {
         recentSearches = []
         defaults.removeObject(forKey: Keys.recentSearches)
+    }
+
+    // MARK: - Bookmarks
+
+    func isBookmarked(_ slug: String) -> Bool {
+        bookmarks.contains { $0.slug == slug }
+    }
+
+    func toggleBookmark(slug: String, title: String) {
+        if isBookmarked(slug) {
+            removeBookmark(slug: slug)
+        } else {
+            bookmarks.insert(RecentArticle(slug: slug, title: title), at: 0)
+            saveBookmarks()
+        }
+    }
+
+    func removeBookmark(slug: String) {
+        bookmarks.removeAll { $0.slug == slug }
+        saveBookmarks()
+    }
+
+    private func saveBookmarks() {
+        if let data = try? JSONEncoder().encode(bookmarks) {
+            defaults.set(data, forKey: Keys.bookmarks)
+        }
     }
 }

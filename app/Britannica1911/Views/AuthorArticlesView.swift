@@ -22,6 +22,7 @@ struct AuthorArticlesView: View {
                             }
                         }
                     }
+                    .bookmarkable(slug: article.slug, title: article.title)
                 }
             } header: {
                 Text("^[\(articles.count) article](inflect: true) in this edition")
