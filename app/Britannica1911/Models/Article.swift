@@ -23,6 +23,52 @@ struct Neighbor: Hashable {
     let title: String
 }
 
+/// A row in a per-letter browse list: the title plus a short body preview with
+/// the leading headword removed (EB1911 bodies begin by repeating the title).
+struct ArticleListItem: Identifiable, Hashable {
+    let id: Int64
+    let slug: String
+    let title: String
+    let bodyPrefix: String
+
+    var preview: String { Self.stripHeadword(bodyPrefix, title: title) }
+
+    /// Drop the leading headword (the title, printed in caps at the start of the
+    /// body) so the preview shows the definition itself. Falls back to the raw
+    /// text if the opening does not match the title.
+    static func stripHeadword(_ body: String, title: String) -> String {
+        let titleKey = title.lowercased().filter { $0.isLetter || $0.isNumber }
+        guard !titleKey.isEmpty else {
+            return body.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var accumulated = ""
+        var matchedEnd: String.Index?
+        var i = body.startIndex
+        var scanned = 0
+        while i < body.endIndex, scanned < 80 {
+            let ch = body[i]
+            if ch.isLetter || ch.isNumber {
+                accumulated.append(contentsOf: ch.lowercased())
+            }
+            i = body.index(after: i)
+            scanned += 1
+            if accumulated == titleKey { matchedEnd = i; break }
+            if accumulated.count > titleKey.count { break }
+        }
+
+        guard let end = matchedEnd else {
+            return body.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var rest = String(body[end...])
+        let trim = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;:.-–—"))
+        while let scalar = rest.unicodeScalars.first, trim.contains(scalar) {
+            rest.removeFirst()
+        }
+        return rest
+    }
+}
+
 /// A full encyclopedia entry.
 struct Article: Identifiable, Hashable {
     let id: Int64

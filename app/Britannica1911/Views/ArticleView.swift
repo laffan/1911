@@ -1,27 +1,59 @@
 import SwiftUI
 
-/// A full article: title, volume, body paragraphs, and cross-reference links.
+/// A full article: title, byline, selectable body, and cross-reference links.
+///
+/// Previous/next are handled as in-place *paging* rather than stack pushes: the
+/// displayed article is swapped with a directional slide (next → right-to-left,
+/// previous → left-to-right) and a horizontal swipe does the same. The
+/// navigation stack is left untouched, so Back returns to the list the reader
+/// came from. Cross-reference and author links still push as new screens.
 struct ArticleView: View {
     let articleID: Int64
     @EnvironmentObject var store: LibraryStore
 
+    @State private var currentID: Int64
+    @State private var goingForward = true
+
+    init(articleID: Int64) {
+        self.articleID = articleID
+        _currentID = State(initialValue: articleID)
+    }
+
     var body: some View {
-        Group {
-            if let article = store.article(id: articleID) {
-                loaded(article)
+        let article = store.article(id: currentID)
+        return ZStack {
+            if let article {
+                articleScroll(article)
+                    .id(currentID)
+                    .transition(pagingTransition)
             } else {
                 Text("Article not found")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .navigationTitle(article?.title ?? "")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        // Prev/next stays pinned to the bottom; the article scrolls beneath it.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let article { neighborBar(article) }
+        }
+        // Swipe left → next, swipe right → previous (simultaneous with scrolling).
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    let dx = value.translation.width, dy = value.translation.height
+                    guard abs(dx) > 80, abs(dx) > abs(dy) * 2 else { return }
+                    if dx < 0 { goNext() } else { goPrevious() }
+                }
+        )
     }
 
-    @ViewBuilder
-    private func loaded(_ article: Article) -> some View {
+    private func articleScroll(_ article: Article) -> some View {
         let refs = store.crossReferences(for: article.id)
-
-        ScrollView {
+        return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(article)
 
@@ -29,12 +61,11 @@ struct ArticleView: View {
                     byline(article.authors)
                 }
 
-                ForEach(Array(paragraphs(article.body).enumerated()), id: \.offset) { _, para in
-                    Text(para)
-                        .font(.system(.body, design: .serif))
-                        .lineSpacing(4)
-                        .textSelection(.enabled)
-                }
+                Text(article.body.trimmingCharacters(in: .whitespacesAndNewlines))
+                    .font(.system(.body, design: .serif))
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
 
                 if !refs.isEmpty {
                     crossReferenceSection(refs)
@@ -44,20 +75,37 @@ struct ArticleView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(24)
         }
-        .navigationTitle(article.title)
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
-        // Prev/next stays pinned to the bottom; the article scrolls beneath it.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            neighborBar(article)
-        }
     }
+
+    // MARK: - Paging
+
+    private var pagingTransition: AnyTransition {
+        goingForward
+            ? .asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))
+            : .asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .trailing))
+    }
+
+    private func goNext() {
+        guard let next = store.article(id: currentID)?.next,
+              let id = store.resolve(next) else { return }
+        goingForward = true
+        withAnimation(.easeInOut(duration: 0.28)) { currentID = id }
+    }
+
+    private func goPrevious() {
+        guard let previous = store.article(id: currentID)?.previous,
+              let id = store.resolve(previous) else { return }
+        goingForward = false
+        withAnimation(.easeInOut(duration: 0.28)) { currentID = id }
+    }
+
+    // MARK: - Header & byline
 
     private func header(_ article: Article) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(article.title)
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
+                .textSelection(.enabled)
             if let citation = citation(article) {
                 Text(citation)
                     .font(.caption)
@@ -101,18 +149,19 @@ struct ArticleView: View {
         }
     }
 
-    /// A bar pinned to the bottom of the screen (via safeAreaInset) offering
-    /// previous/next reading-order navigation. Empty when the article has no
-    /// neighbours, so it takes no space.
+    // MARK: - Bottom prev/next bar
+
     @ViewBuilder
     private func neighborBar(_ article: Article) -> some View {
         if article.previous != nil || article.next != nil {
             VStack(spacing: 0) {
                 Divider()
                 HStack(alignment: .center) {
-                    neighborLink(article.previous, systemImage: "chevron.left", trailing: false)
+                    neighborButton(article.previous, systemImage: "chevron.left",
+                                   trailing: false, action: goPrevious)
                     Spacer(minLength: 12)
-                    neighborLink(article.next, systemImage: "chevron.right", trailing: true)
+                    neighborButton(article.next, systemImage: "chevron.right",
+                                   trailing: true, action: goNext)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -122,29 +171,33 @@ struct ArticleView: View {
     }
 
     @ViewBuilder
-    private func neighborLink(_ neighbor: Neighbor?, systemImage: String, trailing: Bool) -> some View {
+    private func neighborButton(_ neighbor: Neighbor?, systemImage: String,
+                                trailing: Bool, action: @escaping () -> Void) -> some View {
         if let neighbor {
-            let alignment: HorizontalAlignment = trailing ? .trailing : .leading
-            let content = VStack(alignment: alignment, spacing: 2) {
-                Text(trailing ? "Next" : "Previous")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 4) {
-                    if !trailing { Image(systemName: systemImage) }
-                    Text(neighbor.title)
-                        .multilineTextAlignment(trailing ? .trailing : .leading)
-                    if trailing { Image(systemName: systemImage) }
+            let resolved = store.resolve(neighbor) != nil
+            Button(action: action) {
+                VStack(alignment: trailing ? .trailing : .leading, spacing: 2) {
+                    Text(trailing ? "Next" : "Previous")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        if !trailing { Image(systemName: systemImage) }
+                        Text(neighbor.title)
+                            .lineLimit(1)
+                            .multilineTextAlignment(trailing ? .trailing : .leading)
+                        if trailing { Image(systemName: systemImage) }
+                    }
+                    .font(.callout)
                 }
-                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: trailing ? .trailing : .leading)
             }
-            // Navigable when the neighbour has been scraped in; plain text otherwise.
-            if let id = store.resolve(neighbor) {
-                NavigationLink(value: id) { content }.buttonStyle(.plain)
-            } else {
-                content.foregroundStyle(.secondary)
-            }
+            .buttonStyle(.plain)
+            .disabled(!resolved)
+            .foregroundStyle(resolved ? Color.accentColor : Color.secondary)
         }
     }
+
+    // MARK: - Cross references
 
     private func crossReferenceSection(_ refs: [CrossReference]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -181,12 +234,5 @@ struct ArticleView: View {
                 Capsule().fill(resolved ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
             )
             .foregroundStyle(resolved ? Color.accentColor : Color.secondary)
-    }
-
-    private func paragraphs(_ body: String) -> [String] {
-        body
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
     }
 }

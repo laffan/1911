@@ -63,8 +63,8 @@ final class LibraryStore: ObservableObject {
 
     // MARK: - Lookups used by the views
 
-    func articles(startingWith letter: String) -> [ArticleSummary] {
-        db?.articles(startingWith: letter) ?? []
+    func browseItems(startingWith letter: String) -> [ArticleListItem] {
+        db?.browseItems(startingWith: letter) ?? []
     }
 
     func article(id: Int64) -> Article? { db?.article(id: id) }

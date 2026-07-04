@@ -125,18 +125,20 @@ The app is organized as a bottom tab bar with three sections — **Search**,
 
 - **Search** — live, ranked full-text search with highlighted snippets;
   contributor names are indexed, so you can search by author too. When the
-  search field is empty this tab shows the **A–Z browse** index (pick a letter
-  to list its entries).
+  search field is empty this tab shows the **A–Z browse** grid (letter tiles);
+  picking a letter lists its entries, each with a short preview of the text.
 - **Random** — opens a random article, with a dice control to shuffle to
   another (skipping the one on screen).
 - **Recent** — history across launches (capped, most-recent-first), split into
   **Recent random** (random articles you opened, keyed by slug so they survive
   database rebuilds) and **Recent searches** (queries you ran; tap one to jump
   back to the Search tab and re-run it). Each list has its own "Clear".
-- **Read** — articles render in a serif body with a volume/page citation, a
-  tappable **contributor byline**, and **See also** cross-reference chips.
-  Previous/next reading-order navigation stays **pinned to the bottom** while
-  the article scrolls beneath it.
+- **Read** — articles render in a serif, **selectable** body with a volume/page
+  citation, a tappable **contributor byline**, and **See also** cross-reference
+  chips. Previous/next navigation stays **pinned to the bottom** while the
+  article scrolls beneath it; moving between neighbours **pages in place** with a
+  directional slide (and a horizontal **swipe**) rather than deepening the stack,
+  so Back always returns to the list you came from.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
 - Cross-reference, author, and prev/next taps push onto the current tab's

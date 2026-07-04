@@ -54,16 +54,19 @@ final class Database {
         }.first
     }
 
-    func articles(startingWith letter: String) -> [ArticleSummary] {
+    func browseItems(startingWith letter: String) -> [ArticleListItem] {
         query(
-            "SELECT id, slug, title, volume FROM articles WHERE first_letter = ? ORDER BY title COLLATE NOCASE",
+            """
+            SELECT id, slug, title, substr(body, 1, 400)
+            FROM articles WHERE first_letter = ? ORDER BY title COLLATE NOCASE
+            """,
             bind: [.text(letter)]
         ) { stmt in
-            ArticleSummary(
+            ArticleListItem(
                 id: sqlite3_column_int64(stmt, 0),
                 slug: String(cString: sqlite3_column_text(stmt, 1)),
                 title: String(cString: sqlite3_column_text(stmt, 2)),
-                volume: columnTextOrNil(stmt, 3)
+                bodyPrefix: String(cString: sqlite3_column_text(stmt, 3))
             )
         }
     }

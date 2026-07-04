@@ -11,7 +11,8 @@ struct RandomTab: View {
         NavigationStack(path: $path) {
             Group {
                 if let id = randomID {
-                    ArticleView(articleID: id)
+                    // New identity per shuffle so ArticleView re-seeds its paging state.
+                    ArticleView(articleID: id).id(id)
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "die.face.5")
