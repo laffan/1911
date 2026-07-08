@@ -97,6 +97,24 @@ struct RecentArticle: Codable, Identifiable, Hashable {
     var id: String { slug }
 }
 
+/// A passage the reader saved from an article via "Send to Notebook". Keeps a
+/// link back to the source article (by slug, which survives rebuilds).
+struct Note: Codable, Identifiable, Hashable {
+    let id: UUID
+    let text: String
+    let articleSlug: String
+    let articleTitle: String
+    let createdAt: Date
+
+    init(id: UUID = UUID(), text: String, articleSlug: String, articleTitle: String, createdAt: Date = Date()) {
+        self.id = id
+        self.text = text
+        self.articleSlug = articleSlug
+        self.articleTitle = articleTitle
+        self.createdAt = createdAt
+    }
+}
+
 /// A "See also" link from one entry to another. `toID` is present when the
 /// target exists in the corpus; dangling references remain browsable by title.
 struct CrossReference: Identifiable, Hashable {

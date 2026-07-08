@@ -16,6 +16,10 @@ final class LibraryStore: ObservableObject {
     @Published private(set) var recentSearches: [String] = []
     /// Bookmarked articles (most recently added first).
     @Published private(set) var bookmarks: [RecentArticle] = []
+    /// Passages saved from articles via "Send to Notebook" (most recent first).
+    @Published private(set) var notes: [Note] = []
+    /// Recently opened random articles (most recent first).
+    @Published private(set) var recentRandoms: [RecentArticle] = []
 
     let letters: [String]
 
@@ -27,6 +31,8 @@ final class LibraryStore: ObservableObject {
     private enum Keys {
         static let recentSearches = "recentSearches"
         static let bookmarks = "bookmarks"
+        static let notes = "notes"
+        static let recentRandoms = "recentRandoms"
     }
 
     init() {
@@ -44,6 +50,14 @@ final class LibraryStore: ObservableObject {
         if let data = defaults.data(forKey: Keys.bookmarks),
            let saved = try? JSONDecoder().decode([RecentArticle].self, from: data) {
             bookmarks = saved
+        }
+        if let data = defaults.data(forKey: Keys.notes),
+           let saved = try? JSONDecoder().decode([Note].self, from: data) {
+            notes = saved
+        }
+        if let data = defaults.data(forKey: Keys.recentRandoms),
+           let saved = try? JSONDecoder().decode([RecentArticle].self, from: data) {
+            recentRandoms = saved
         }
 
         cancellable = $searchText
@@ -137,6 +151,59 @@ final class LibraryStore: ObservableObject {
     private func saveBookmarks() {
         if let data = try? JSONEncoder().encode(bookmarks) {
             defaults.set(data, forKey: Keys.bookmarks)
+        }
+    }
+
+    // MARK: - Notes (Send to Notebook)
+
+    /// Save a passage selected from an article. Whitespace-trimmed; blanks ignored.
+    func addNote(text: String, articleSlug: String, articleTitle: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        notes.insert(Note(text: trimmed, articleSlug: articleSlug, articleTitle: articleTitle), at: 0)
+        saveNotes()
+    }
+
+    func removeNote(_ note: Note) {
+        notes.removeAll { $0.id == note.id }
+        saveNotes()
+    }
+
+    func removeNotes(atOffsets offsets: IndexSet) {
+        let ids = Set(offsets.map { notes[$0].id })
+        notes.removeAll { ids.contains($0.id) }
+        saveNotes()
+    }
+
+    func clearNotes() {
+        notes = []
+        defaults.removeObject(forKey: Keys.notes)
+    }
+
+    private func saveNotes() {
+        if let data = try? JSONEncoder().encode(notes) {
+            defaults.set(data, forKey: Keys.notes)
+        }
+    }
+
+    // MARK: - Recent random
+
+    /// Record a random article the reader opened (deduped by slug, newest first).
+    func recordRandom(slug: String, title: String) {
+        var list = recentRandoms.filter { $0.slug != slug }
+        list.insert(RecentArticle(slug: slug, title: title), at: 0)
+        recentRandoms = Array(list.prefix(maxRecents))
+        saveRecentRandoms()
+    }
+
+    func clearRecentRandoms() {
+        recentRandoms = []
+        defaults.removeObject(forKey: Keys.recentRandoms)
+    }
+
+    private func saveRecentRandoms() {
+        if let data = try? JSONEncoder().encode(recentRandoms) {
+            defaults.set(data, forKey: Keys.recentRandoms)
         }
     }
 }

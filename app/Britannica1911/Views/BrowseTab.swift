@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// Browse entries a letter at a time, with a sub-section scrubber (Aa, Ab, …)
-/// showing/controlling position and an A–Z rail to jump between letters.
+/// The unified Browse pane: a search field with a Random shortcut at the top,
+/// then either full-text results (while searching) or the A–Z reading index
+/// (when the field is clear).
 struct BrowseTab: View {
     @EnvironmentObject var store: LibraryStore
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
     @State private var path = NavigationPath()
     @State private var selectedLetter = "A"
     @State private var groups: [BrowseGroup] = []
@@ -11,17 +15,34 @@ struct BrowseTab: View {
 
     private let coordSpace = "browseScroll"
 
+    private var isSearching: Bool {
+        !store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// On iPad (regular width) constrain the browse list to a reading column;
+    /// on iPhone / macOS it fills the available width.
+    private var isRegularWidth: Bool {
+        #if os(iOS)
+        return hSizeClass == .regular
+        #else
+        return false
+        #endif
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollViewReader { proxy in
-                HStack(spacing: 0) {
-                    entryList
-                    subSectionBar(proxy)
-                    alphabetRail
-                }
-                .onChange(of: selectedLetter) { _ in
-                    reload()
-                    scrollToTop(proxy)
+            VStack(spacing: 0) {
+                SearchField(text: $store.searchText,
+                            onRandom: openRandom,
+                            onSubmit: { store.recordSearch(store.searchText) })
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                Divider()
+
+                if isSearching {
+                    searchResults
+                } else {
+                    browseIndex
                 }
             }
             .navigationTitle("Browse")
@@ -40,7 +61,72 @@ struct BrowseTab: View {
         }
     }
 
-    // MARK: - Main column
+    // MARK: - Random
+
+    private func openRandom() {
+        guard let id = store.pickRandom(excluding: nil) else { return }
+        if let article = store.article(id: id) {
+            store.recordRandom(slug: article.slug, title: article.title)
+        }
+        path.append(id)
+    }
+
+    // MARK: - Search results
+
+    @ViewBuilder
+    private var searchResults: some View {
+        if let error = store.loadError {
+            List { Text(error).font(.footnote).foregroundStyle(.red) }
+        } else {
+            List {
+                Section(resultsHeader) {
+                    if store.results.isEmpty {
+                        Text("No matching articles")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(store.results) { result in
+                            Button {
+                                store.recordSearch(store.searchText)
+                                path.append(result.id)
+                            } label: {
+                                SearchResultRow(result: result)
+                            }
+                            .buttonStyle(.plain)
+                            .bookmarkable(slug: result.slug, title: result.title)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var resultsHeader: String {
+        switch store.results.count {
+        case 0: return "Results"
+        case 1: return "1 result"
+        default: return "\(store.results.count) results"
+        }
+    }
+
+    // MARK: - Browse index (A–Z)
+
+    private var browseIndex: some View {
+        ScrollViewReader { proxy in
+            HStack(spacing: 0) {
+                entryList
+                subSectionBar(proxy)
+                alphabetRail
+            }
+            // On iPad, keep the reading column the same width as an article and
+            // centered, rather than stretched across the whole window.
+            .frame(maxWidth: isRegularWidth ? Layout.articleContentWidth + 72 : .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .onChange(of: selectedLetter) { _ in
+                reload()
+                scrollToTop(proxy)
+            }
+        }
+    }
 
     private var entryList: some View {
         ScrollView {
@@ -190,6 +276,51 @@ struct BrowseTab: View {
             return String(first).uppercased() + String(second).lowercased()
         }
         return String(first).uppercased()
+    }
+}
+
+/// A rounded search field paired with a Random-article shortcut, sitting at the
+/// top of the Browse pane.
+struct SearchField: View {
+    @Binding var text: String
+    var onRandom: () -> Void
+    var onSubmit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search 1911 Britannica", text: $text)
+                    .textFieldStyle(.plain)
+                    .submitLabel(.search)
+                    .onSubmit(onSubmit)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                if !text.isEmpty {
+                    Button {
+                        text = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.12)))
+
+            Button(action: onRandom) {
+                Image(systemName: "die.face.5")
+                    .font(.title2)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .help("Open a random article")
+        }
     }
 }
 

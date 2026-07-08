@@ -1,34 +1,51 @@
 import SwiftUI
+import Combine
 
 /// The primary destinations, presented as a bottom tab bar (iOS) or a tab strip
 /// (macOS).
 enum Tab: Hashable {
-    case browse, search, random, bookmarks
+    case browse, notebook, listen, settings
+}
+
+/// Shared layout metrics so the browse index and article body line up in width.
+enum Layout {
+    /// Reading-column width used for articles and (on iPad) the browse list.
+    static let articleContentWidth: CGFloat = 720
+}
+
+/// App-wide navigation coordinator. Lets deep views switch tabs (e.g. a recent
+/// search in the Notebook jumps to Browse; a new recording jumps to Listen).
+@MainActor
+final class AppRouter: ObservableObject {
+    @Published var selectedTab: Tab = .browse
 }
 
 struct ContentView: View {
-    @State private var selectedTab: Tab = .browse
+    @EnvironmentObject var router: AppRouter
+    @EnvironmentObject var settings: SettingsStore
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $router.selectedTab) {
             BrowseTab()
                 .tabItem { Label("Browse", systemImage: "book") }
                 .tag(Tab.browse)
 
-            SearchTab()
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(Tab.search)
+            NotebookTab()
+                .tabItem { Label("Notebook", systemImage: "note.text") }
+                .tag(Tab.notebook)
 
-            RandomTab()
-                .tabItem { Label("Random", systemImage: "die.face.5") }
-                .tag(Tab.random)
+            ListenTab()
+                .tabItem { Label("Listen", systemImage: "headphones") }
+                .tag(Tab.listen)
 
-            BookmarksTab()
-                .tabItem { Label("Bookmarks", systemImage: "bookmark") }
-                .tag(Tab.bookmarks)
+            SettingsTab()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(Tab.settings)
         }
         // Give the whole app an encyclopedic serif feel.
         .fontDesign(.serif)
+        // Honor the user's appearance preference (nil = follow the system).
+        .preferredColorScheme(settings.appearance.colorScheme)
     }
 }
 
@@ -90,5 +107,77 @@ struct EntryRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+}
+
+/// A single search hit: title plus a highlighted body snippet.
+struct SearchResultRow: View {
+    let result: SearchResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(result.title)
+                .font(.headline)
+            Text(Self.highlighted(result.snippet))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+        }
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// Convert an FTS5 snippet — where matched terms are wrapped in the control
+    /// characters STX (\u{2}) and ETX (\u{3}) — into an AttributedString that
+    /// bolds the matches.
+    static func highlighted(_ snippet: String) -> AttributedString {
+        var out = AttributedString()
+        var buffer = ""
+        var bold = false
+
+        func flush() {
+            guard !buffer.isEmpty else { return }
+            var piece = AttributedString(buffer)
+            if bold {
+                piece.font = .caption.bold()
+                piece.foregroundColor = .primary
+            }
+            out += piece
+            buffer = ""
+        }
+
+        for ch in snippet {
+            switch ch {
+            case "\u{2}": flush(); bold = true
+            case "\u{3}": flush(); bold = false
+            default: buffer.append(ch)
+            }
+        }
+        flush()
+        return out
+    }
+}
+
+/// A centered icon + message used for empty states.
+struct ContentPlaceholder: View {
+    let icon: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 42))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.title3.weight(.semibold))
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

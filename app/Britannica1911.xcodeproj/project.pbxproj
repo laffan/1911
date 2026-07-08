@@ -9,10 +9,13 @@
 /* Begin PBXBuildFile section */
 		191100000000000000000D01 /* Britannica1911App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C01 /* Britannica1911App.swift */; };
 		191100000000000000000D02 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C02 /* ContentView.swift */; };
-		191100000000000000000D12 /* SearchTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C12 /* SearchTab.swift */; };
-		191100000000000000000D13 /* RandomTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C13 /* RandomTab.swift */; };
 		191100000000000000000D15 /* BrowseTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C15 /* BrowseTab.swift */; };
-		191100000000000000000D16 /* BookmarksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C16 /* BookmarksTab.swift */; };
+		191100000000000000000D20 /* NotebookTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C20 /* NotebookTab.swift */; };
+		191100000000000000000D21 /* ListenTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C21 /* ListenTab.swift */; };
+		191100000000000000000D22 /* SettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C22 /* SettingsTab.swift */; };
+		191100000000000000000D23 /* SelectableArticleText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C23 /* SelectableArticleText.swift */; };
+		191100000000000000000D25 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C25 /* SettingsStore.swift */; };
+		191100000000000000000D26 /* ListenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C26 /* ListenStore.swift */; };
 		191100000000000000000D04 /* ArticleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C04 /* ArticleView.swift */; };
 		191100000000000000000D05 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C05 /* FlowLayout.swift */; };
 		191100000000000000000D11 /* AuthorArticlesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C11 /* AuthorArticlesView.swift */; };
@@ -27,10 +30,13 @@
 		191100000000000000000A05 /* Britannica1911.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Britannica1911.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		191100000000000000000C01 /* Britannica1911App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Britannica1911App.swift; sourceTree = "<group>"; };
 		191100000000000000000C02 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		191100000000000000000C12 /* SearchTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTab.swift; sourceTree = "<group>"; };
-		191100000000000000000C13 /* RandomTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomTab.swift; sourceTree = "<group>"; };
 		191100000000000000000C15 /* BrowseTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowseTab.swift; sourceTree = "<group>"; };
-		191100000000000000000C16 /* BookmarksTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarksTab.swift; sourceTree = "<group>"; };
+		191100000000000000000C20 /* NotebookTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookTab.swift; sourceTree = "<group>"; };
+		191100000000000000000C21 /* ListenTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListenTab.swift; sourceTree = "<group>"; };
+		191100000000000000000C22 /* SettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTab.swift; sourceTree = "<group>"; };
+		191100000000000000000C23 /* SelectableArticleText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableArticleText.swift; sourceTree = "<group>"; };
+		191100000000000000000C25 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		191100000000000000000C26 /* ListenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListenStore.swift; sourceTree = "<group>"; };
 		191100000000000000000C04 /* ArticleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleView.swift; sourceTree = "<group>"; };
 		191100000000000000000C05 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		191100000000000000000C11 /* AuthorArticlesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthorArticlesView.swift; sourceTree = "<group>"; };
@@ -102,6 +108,8 @@
 			isa = PBXGroup;
 			children = (
 				191100000000000000000C08 /* LibraryStore.swift */,
+				191100000000000000000C25 /* SettingsStore.swift */,
+				191100000000000000000C26 /* ListenStore.swift */,
 			);
 			path = Store;
 			sourceTree = "<group>";
@@ -110,11 +118,12 @@
 			isa = PBXGroup;
 			children = (
 				191100000000000000000C02 /* ContentView.swift */,
-				191100000000000000000C12 /* SearchTab.swift */,
 				191100000000000000000C15 /* BrowseTab.swift */,
-				191100000000000000000C13 /* RandomTab.swift */,
-				191100000000000000000C16 /* BookmarksTab.swift */,
+				191100000000000000000C20 /* NotebookTab.swift */,
+				191100000000000000000C21 /* ListenTab.swift */,
+				191100000000000000000C22 /* SettingsTab.swift */,
 				191100000000000000000C04 /* ArticleView.swift */,
+				191100000000000000000C23 /* SelectableArticleText.swift */,
 				191100000000000000000C11 /* AuthorArticlesView.swift */,
 				191100000000000000000C05 /* FlowLayout.swift */,
 			);
@@ -193,16 +202,19 @@
 			files = (
 				191100000000000000000D01 /* Britannica1911App.swift in Sources */,
 				191100000000000000000D02 /* ContentView.swift in Sources */,
-				191100000000000000000D12 /* SearchTab.swift in Sources */,
 				191100000000000000000D15 /* BrowseTab.swift in Sources */,
-				191100000000000000000D13 /* RandomTab.swift in Sources */,
-				191100000000000000000D16 /* BookmarksTab.swift in Sources */,
+				191100000000000000000D20 /* NotebookTab.swift in Sources */,
+				191100000000000000000D21 /* ListenTab.swift in Sources */,
+				191100000000000000000D22 /* SettingsTab.swift in Sources */,
+				191100000000000000000D23 /* SelectableArticleText.swift in Sources */,
 				191100000000000000000D04 /* ArticleView.swift in Sources */,
 				191100000000000000000D11 /* AuthorArticlesView.swift in Sources */,
 				191100000000000000000D05 /* FlowLayout.swift in Sources */,
 				191100000000000000000D06 /* Article.swift in Sources */,
 				191100000000000000000D07 /* Database.swift in Sources */,
 				191100000000000000000D08 /* LibraryStore.swift in Sources */,
+				191100000000000000000D25 /* SettingsStore.swift in Sources */,
+				191100000000000000000D26 /* ListenStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

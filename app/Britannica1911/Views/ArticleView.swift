@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// A full article: title, byline, selectable body, and cross-reference links.
+/// A full article: title, byline, a Listen shortcut, a selectable body, and
+/// cross-reference links.
 ///
 /// Previous/next are handled as in-place *paging* rather than stack pushes: the
 /// displayed article is swapped with a directional slide (next → right-to-left,
@@ -10,9 +11,32 @@ import SwiftUI
 struct ArticleView: View {
     let articleID: Int64
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var listen: ListenStore
+    @EnvironmentObject var router: AppRouter
 
     @State private var currentID: Int64
     @State private var goingForward = true
+
+    // Listen / notebook feedback
+    @State private var isGenerating = false
+    @State private var showNeedsKey = false
+    @State private var errorMessage: String?
+    @State private var addedTrack: AudioTrack?
+    @State private var showNoteSaved = false
+
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
+
+    /// Center the reading column and its title on iPad (regular width).
+    private var isRegular: Bool {
+        #if os(iOS)
+        return hSizeClass == .regular
+        #else
+        return false
+        #endif
+    }
 
     init(articleID: Int64) {
         self.articleID = articleID
@@ -49,31 +73,141 @@ struct ArticleView: View {
                     if dx < 0 { goNext() } else { goPrevious() }
                 }
         )
+        .overlay(alignment: .top) { noteSavedToast }
+        .alert("OpenAI key needed", isPresented: $showNeedsKey) {
+            Button("Open Settings") { router.selectedTab = .settings }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Add your OpenAI API key in Settings › Listen to create an audio version.")
+        }
+        .alert("Couldn’t create audio",
+               isPresented: Binding(get: { errorMessage != nil },
+                                    set: { if !$0 { errorMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .alert("Ready to Listen",
+               isPresented: Binding(get: { addedTrack != nil },
+                                    set: { if !$0 { addedTrack = nil } })) {
+            Button("Play Now") {
+                if let track = addedTrack {
+                    router.selectedTab = .listen
+                    listen.play(track)
+                }
+                addedTrack = nil
+            }
+            Button("Later", role: .cancel) { addedTrack = nil }
+        } message: {
+            Text("“\(addedTrack?.title ?? "This article")” was added to your Listen playlist.")
+        }
     }
 
     private func articleScroll(_ article: Article) -> some View {
         let refs = store.crossReferences(for: article.id)
+        let bodyText = article.body.trimmingCharacters(in: .whitespacesAndNewlines)
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(article)
+
+                listenButton(article)
 
                 if !article.authors.isEmpty {
                     byline(article.authors)
                 }
 
-                Text(article.body.trimmingCharacters(in: .whitespacesAndNewlines))
-                    .font(.system(.body, design: .serif))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+                bodyView(bodyText, article: article)
 
                 if !refs.isEmpty {
                     crossReferenceSection(refs)
                 }
             }
-            .frame(maxWidth: 720, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: Layout.articleContentWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
             .padding(24)
+        }
+    }
+
+    // MARK: - Body
+
+    @ViewBuilder
+    private func bodyView(_ text: String, article: Article) -> some View {
+        #if os(iOS)
+        SelectableArticleText(text: text, fontSize: settings.fontSize.pointSize) { selection in
+            sendToNotebook(selection, article: article)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        #else
+        Text(text)
+            .font(.system(size: settings.fontSize.pointSize, design: .serif))
+            .lineSpacing(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+        #endif
+    }
+
+    private func sendToNotebook(_ selection: String, article: Article) {
+        store.addNote(text: selection, articleSlug: article.slug, articleTitle: article.title)
+        withAnimation { showNoteSaved = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            withAnimation { showNoteSaved = false }
+        }
+    }
+
+    @ViewBuilder
+    private var noteSavedToast: some View {
+        if showNoteSaved {
+            Label("Saved to Notebook", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(.ultraThinMaterial))
+                .padding(.top, 10)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    // MARK: - Listen
+
+    private func listenButton(_ article: Article) -> some View {
+        Button {
+            startListen(article)
+        } label: {
+            HStack(spacing: 6) {
+                if isGenerating {
+                    ProgressView().controlSize(.small)
+                    Text("Preparing audio…")
+                } else {
+                    Image(systemName: "headphones")
+                    Text("Listen")
+                }
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+            .foregroundStyle(Color.accentColor)
+        }
+        .buttonStyle(.plain)
+        .disabled(isGenerating)
+        .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
+    }
+
+    private func startListen(_ article: Article) {
+        guard settings.hasAPIKey else { showNeedsKey = true; return }
+        isGenerating = true
+        Task { @MainActor in
+            do {
+                let track = try await listen.generate(article: article,
+                                                       apiKey: settings.apiKey,
+                                                       voice: settings.voice)
+                isGenerating = false
+                addedTrack = track
+            } catch {
+                isGenerating = false
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -102,15 +236,18 @@ struct ArticleView: View {
     // MARK: - Header & byline
 
     private func header(_ article: Article) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: isRegular ? .center : .leading, spacing: 6) {
             Text(article.title)
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
+                .multilineTextAlignment(isRegular ? .center : .leading)
+                .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
                 .textSelection(.enabled)
                 .bookmarkable(slug: article.slug, title: article.title)
             if let citation = citation(article) {
                 Text(citation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
             }
         }
     }

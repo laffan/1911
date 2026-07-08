@@ -33,12 +33,14 @@ app/
   Britannica1911.xcodeproj          Multiplatform Xcode project (iOS + macOS)
   Britannica1911/
     Britannica1911App.swift         App entry point
-    Views/                          ContentView (TabView), BrowseTab, SearchTab,
-                                    RandomTab, BookmarksTab, ArticleView,
-                                    AuthorArticlesView, FlowLayout
-    Models/Article.swift            Value types
+    Views/                          ContentView (TabView), BrowseTab, NotebookTab,
+                                    ListenTab, SettingsTab, ArticleView,
+                                    SelectableArticleText, AuthorArticlesView, FlowLayout
+    Models/Article.swift            Value types (articles, notes, …)
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
+    Store/SettingsStore.swift       Appearance, font size, OpenAI credentials (Keychain)
+    Store/ListenStore.swift         TTS synthesis + audio playlist / media player
     Assets.xcassets                 App icon slot + accent color
     britannica.sqlite               Bundled database (built by build_db.py)
 ```
@@ -120,33 +122,56 @@ null author is expected and handled gracefully.
 
 ### App
 
-A serif-styled bottom tab bar with four sections — **Browse**, **Search**,
-**Random**, **Bookmarks** — each with its own navigation stack.
+A serif-styled bottom tab bar with four sections — **Browse**, **Notebook**,
+**Listen**, **Settings** — each with its own navigation stack.
 
-- **Browse** — a three-column reading index: a scrollable list of entries for
-  one letter (title + a two-line preview with the headword removed), a
-  **sub-section scrubber** (Aa, Ab, Ac …) that shows and controls position, and
-  an **A–Z rail** to jump between letters. Entries have generous spacing and no
-  separator rules.
-- **Search** — live, ranked full-text search with highlighted snippets;
-  contributor names are indexed, so you can search by author too. When the field
-  is empty it lists your **recent searches** (tap to re-run; "Clear" to reset).
-- **Random** — opens a random article, with a dice control to shuffle to
-  another (skipping the one on screen).
-- **Bookmarks** — articles you've saved. **Long-press any entry's title**
-  anywhere in the app to Bookmark it; **swipe** a row here to remove it.
-  Bookmarks persist across launches and are keyed by slug.
-- **Read** — articles render in a serif, **selectable** body with a volume/page
-  citation, a tappable **contributor byline**, and **See also** cross-reference
-  chips. Previous/next navigation stays **pinned to the bottom** while the
-  article scrolls beneath it; moving between neighbours **pages in place** with a
-  directional slide (and a horizontal **swipe**) rather than deepening the stack,
-  so Back always returns to the list you came from.
+- **Browse** — search, browse and random in one pane. A **search field** sits at
+  the top with a **Random dice** beside it. Type to get live, ranked full-text
+  results (contributor names are indexed, so you can search by author too); clear
+  the field and the **A–Z reading index** returns — a scrollable list of entries
+  for one letter (title + two-line preview), a **sub-section scrubber**
+  (Aa, Ab, Ac …), and an **A–Z rail**. The dice opens a random article.
+- **Notebook** — a sub-navigation over four kept collections:
+  - **Bookmarks** — articles you've saved. **Long-press any entry's title**
+    anywhere in the app to Bookmark it; **swipe** to remove. Keyed by slug.
+  - **Notes** — passages you saved with **Send to Notebook** (see Read), each
+    linking back to its source article.
+  - **Recent Searches** — tap to re-run in Browse; "Clear" to reset.
+  - **Recent Random** — the random entries you've opened, tap to revisit.
+- **Listen** — a **playlist** of article recordings plus a simple **media
+  player** (play/pause, scrubber, skip). Recordings are generated on demand from
+  the **Listen** button on any article using OpenAI's text-to-speech API and
+  saved on device.
+- **Settings** — a sub-navigation:
+  - **Appearance** — follow the **System** theme or force **Light** / **Dark**,
+    and pick an **article text size**.
+  - **Listen** — store your **OpenAI API key** (kept in the Keychain, persisted
+    between launches) and choose a **voice** once authenticated.
+- **Read** — articles render in a serif body at your chosen text size, with a
+  volume/page citation, a tappable **contributor byline**, a **Listen** button,
+  and **See also** cross-reference chips. The body is **freely selectable**: pick
+  any passage and the edit menu offers **Send to Notebook** alongside the usual
+  Copy / Look Up / Share. Previous/next navigation stays **pinned to the bottom**
+  while the article scrolls beneath it; moving between neighbours **pages in
+  place** with a directional slide (and a horizontal **swipe**), so Back always
+  returns to the list you came from. On **iPad** the reading column (and the
+  Browse index) is centered at article width, with the title centered above it.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
 
 (The Wikisource source URL is still collected in the database for provenance;
 it is simply not surfaced in the reading UI.)
+
+### Listen (text-to-speech)
+
+The **Listen** button on an article sends its text to OpenAI's
+[`/v1/audio/speech`](https://developers.openai.com/api/docs/guides/text-to-speech)
+endpoint (`tts-1`), streams back an mp3, and stores it under
+`Documents/ListenAudio` with its metadata. Long articles are split under the
+API's per-request character limit and the mp3 segments are concatenated. Your
+API key is entered in **Settings › Listen** and held in the Keychain — it never
+leaves the device except in the request to OpenAI. Playback uses `AVAudioPlayer`
+with a spoken-audio session; tracks auto-advance through the playlist.
 
 ## Notes & provenance
 
