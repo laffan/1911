@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AVFoundation
+import MediaPlayer
 
 /// A generated audio version of an article, stored on disk under
 /// Documents/ListenAudio. Metadata persists; the mp3 file lives beside it.
@@ -37,6 +38,7 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private var player: AVAudioPlayer?
     private var timer: Timer?
+    private var remoteCommandsConfigured = false
     private let defaults = UserDefaults.standard
     private let tracksKey = "listenTracks"
 
@@ -102,6 +104,7 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     func play(_ track: AudioTrack) {
         configureSession()
+        configureRemoteCommandsIfNeeded()
         do {
             let newPlayer = try AVAudioPlayer(contentsOf: url(for: track))
             newPlayer.delegate = self
@@ -113,6 +116,7 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
             newPlayer.play()
             isPlaying = true
             startTimer()
+            updateNowPlaying()
         } catch {
             isPlaying = false
         }
@@ -133,6 +137,7 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
             isPlaying = true
             startTimer()
         }
+        updateNowPlaying()
     }
 
     func seek(to time: Double) {
@@ -140,6 +145,7 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
         let clamped = min(max(time, 0), player.duration)
         player.currentTime = clamped
         currentTime = clamped
+        updateNowPlaying()
     }
 
     func next() { advance(by: 1) }
@@ -161,6 +167,8 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
         currentTime = 0
         duration = 0
         currentTrackID = nil
+        updateNowPlaying()
+        deactivateSession()
     }
 
     // MARK: - Removal
@@ -209,14 +217,82 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
            let index = tracks.firstIndex(where: { $0.id == id }),
            tracks.indices.contains(index + 1) {
             play(tracks[index + 1])
+        } else {
+            updateNowPlaying()
         }
     }
+
+    // MARK: - Session
 
     private func configureSession() {
         #if os(iOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
+    }
+
+    private func deactivateSession() {
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
+    }
+
+    // MARK: - Now Playing & remote controls (lock screen / Control Center)
+
+    private func updateNowPlaying() {
+        let center = MPNowPlayingInfoCenter.default()
+        guard let track = currentTrack else {
+            center.nowPlayingInfo = nil
+            return
+        }
+        let info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPMediaItemPropertyArtist: "1911 Britannica · \(track.voice)",
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: player?.currentTime ?? currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
+        ]
+        center.nowPlayingInfo = info
+    }
+
+    private func configureRemoteCommandsIfNeeded() {
+        guard !remoteCommandsConfigured else { return }
+        remoteCommandsConfigured = true
+        let center = MPRemoteCommandCenter.shared()
+
+        center.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isPlaying else { return }
+                self.togglePlayPause()
+            }
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isPlaying else { return }
+                self.togglePlayPause()
+            }
+            return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.togglePlayPause() }
+            return .success
+        }
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.next() }
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.previous() }
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else {
+                return .commandFailed
+            }
+            Task { @MainActor in self?.seek(to: position) }
+            return .success
+        }
     }
 }
 

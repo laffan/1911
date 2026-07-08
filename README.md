@@ -173,6 +173,12 @@ API key is entered in **Settings › Listen** and held in the Keychain — it ne
 leaves the device except in the request to OpenAI. Playback uses `AVAudioPlayer`
 with a spoken-audio session; tracks auto-advance through the playlist.
 
+Playback **continues in the background and on the lock screen** (the app
+declares the `audio` background mode on iOS). Track title and progress are
+published to `MPNowPlayingInfoCenter`, and the lock-screen / Control Center
+transport — play, pause, next, previous and the scrubber — is wired through
+`MPRemoteCommandCenter`, so headphone and CarPlay controls work too.
+
 ## Notes & provenance
 
 - The seed entries in `seed_articles.json` are **abridged, hand-entered
