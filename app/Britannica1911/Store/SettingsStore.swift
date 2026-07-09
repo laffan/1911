@@ -57,17 +57,17 @@ enum TTSVoice: String, CaseIterable, Identifiable {
 /// the API key lives in the Keychain so it survives launches securely.
 @MainActor
 final class SettingsStore: ObservableObject {
-    @Published var appearance: AppearanceMode {
+    @Published var appearance: AppearanceMode = .system {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
-    @Published var fontSize: ArticleFontSize {
+    @Published var fontSize: ArticleFontSize = .medium {
         didSet { defaults.set(fontSize.rawValue, forKey: Keys.fontSize) }
     }
-    @Published var voice: TTSVoice {
+    @Published var voice: TTSVoice = .alloy {
         didSet { defaults.set(voice.rawValue, forKey: Keys.voice) }
     }
     /// The OpenAI API key. Mirrored to the Keychain on every change.
-    @Published var apiKey: String {
+    @Published var apiKey: String = "" {
         didSet { Keychain.set(apiKey.isEmpty ? nil : apiKey, for: Keys.apiKey) }
     }
 
@@ -84,10 +84,17 @@ final class SettingsStore: ObservableObject {
     }
 
     init() {
-        let d = UserDefaults.standard
-        appearance = AppearanceMode(rawValue: d.string(forKey: Keys.appearance) ?? "") ?? .system
-        fontSize = ArticleFontSize(rawValue: d.string(forKey: Keys.fontSize) ?? "") ?? .medium
-        voice = TTSVoice(rawValue: d.string(forKey: Keys.voice) ?? "") ?? .alloy
+        // Load persisted values. (Observers don't fire for a class's own
+        // properties during its initializer, so nothing is written back here.)
+        if let mode = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") {
+            appearance = mode
+        }
+        if let size = ArticleFontSize(rawValue: defaults.string(forKey: Keys.fontSize) ?? "") {
+            fontSize = size
+        }
+        if let v = TTSVoice(rawValue: defaults.string(forKey: Keys.voice) ?? "") {
+            voice = v
+        }
         apiKey = Keychain.get(Keys.apiKey) ?? ""
     }
 }

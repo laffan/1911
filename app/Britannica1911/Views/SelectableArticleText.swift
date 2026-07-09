@@ -67,10 +67,10 @@ struct SelectableArticleText: UIViewRepresentable {
         func textView(_ textView: UITextView,
                       editMenuForTextIn range: NSRange,
                       suggestedActions: [UIMenuElement]) -> UIMenu? {
-            guard range.length > 0, let full = textView.text as NSString? else {
+            guard range.length > 0, let text = textView.text, !text.isEmpty else {
                 return UIMenu(children: suggestedActions)
             }
-            let selection = full.substring(with: range)
+            let selection = (text as NSString).substring(with: range)
             let send = UIAction(title: "Send to Notebook",
                                 image: UIImage(systemName: "text.badge.plus")) { [weak self] _ in
                 self?.onSendToNotebook(selection)
