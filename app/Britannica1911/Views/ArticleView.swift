@@ -122,7 +122,7 @@ struct ArticleView: View {
                     crossReferenceSection(refs)
                 }
             }
-            .frame(maxWidth: Layout.articleContentWidth, alignment: .leading)
+            .frame(maxWidth: LayoutMetrics.articleContentWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
             .padding(24)
         }

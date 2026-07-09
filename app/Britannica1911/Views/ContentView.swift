@@ -8,7 +8,8 @@ enum Tab: Hashable {
 }
 
 /// Shared layout metrics so the browse index and article body line up in width.
-enum Layout {
+/// (Named to avoid colliding with SwiftUI's `Layout` protocol.)
+enum LayoutMetrics {
     /// Reading-column width used for articles and (on iPad) the browse list.
     static let articleContentWidth: CGFloat = 720
 }

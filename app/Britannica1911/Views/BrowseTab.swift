@@ -119,7 +119,7 @@ struct BrowseTab: View {
             }
             // On iPad, keep the reading column the same width as an article and
             // centered, rather than stretched across the whole window.
-            .frame(maxWidth: isRegularWidth ? Layout.articleContentWidth + 72 : .infinity)
+            .frame(maxWidth: isRegularWidth ? LayoutMetrics.articleContentWidth + 72 : .infinity)
             .frame(maxWidth: .infinity, alignment: .center)
             .onChange(of: selectedLetter) { _ in
                 reload()
