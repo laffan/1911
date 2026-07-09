@@ -122,8 +122,10 @@ null author is expected and handled gracefully.
 
 ### App
 
-A serif-styled bottom tab bar with four sections — **Browse**, **Notebook**,
-**Listen**, **Settings** — each with its own navigation stack.
+A bottom tab bar with four sections — **Browse**, **Notebook**, **Listen**,
+**Settings** — each with its own navigation stack. The UI chrome uses the
+system sans-serif face; only the article reading view (title and body) is set
+in serif for an encyclopedic feel.
 
 - **Browse** — search, browse and random in one pane. A **search field** sits at
   the top with a **Random dice** beside it. Type to get live, ranked full-text
@@ -131,13 +133,14 @@ A serif-styled bottom tab bar with four sections — **Browse**, **Notebook**,
   the field and the **A–Z reading index** returns — a scrollable list of entries
   for one letter (title + two-line preview), a **sub-section scrubber**
   (Aa, Ab, Ac …), and an **A–Z rail**. The dice opens a random article.
-- **Notebook** — a sub-navigation over four kept collections:
+- **Notebook** — a sub-navigation over three kept collections:
   - **Bookmarks** — articles you've saved. **Long-press any entry's title**
     anywhere in the app to Bookmark it; **swipe** to remove. Keyed by slug.
   - **Notes** — passages you saved with **Send to Notebook** (see Read), each
     linking back to its source article.
-  - **Recent Searches** — tap to re-run in Browse; "Clear" to reset.
-  - **Recent Random** — the random entries you've opened, tap to revisit.
+  - **Recent** — two sections: **Recent searches** (tap to re-run in Browse) and
+    **Recent random** (entries you've opened via the dice), each with its own
+    "Clear".
 - **Listen** — a **playlist** of article recordings plus a simple **media
   player** (play/pause, scrubber, skip). Recordings are generated on demand from
   the **Listen** button on any article using OpenAI's text-to-speech API and

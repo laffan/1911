@@ -5,6 +5,7 @@ import SwiftUI
 /// (when the field is clear).
 struct BrowseTab: View {
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var router: AppRouter
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     #endif
@@ -52,17 +53,12 @@ struct BrowseTab: View {
             // No pane header — the tab bar's active state is enough.
             .toolbar(.hidden, for: .navigationBar)
             .scrollDismissesKeyboard(.interactively)
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button {
-                        searchFocused = false
-                    } label: {
-                        Label("Hide Keyboard", systemImage: "keyboard.chevron.compact.down")
-                    }
-                }
-            }
             #endif
+        }
+        // Clear stale focus when leaving Browse, so returning and tapping the
+        // field re-presents the keyboard (and its Hide button).
+        .onChange(of: router.selectedTab) { tab in
+            if tab != .browse { searchFocused = false }
         }
         .onAppear {
             if groups.isEmpty {
@@ -139,6 +135,9 @@ struct BrowseTab: View {
                 scrollToTop(proxy)
             }
         }
+        // Let the keyboard overlay the index instead of squishing the rails;
+        // the Hide Keyboard button dismisses it.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private var entryList: some View {
@@ -313,6 +312,18 @@ struct SearchField: View {
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
+                    // Attach the Hide-Keyboard control to the field itself so it
+                    // re-appears reliably each time the field is focused.
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button {
+                                focus.wrappedValue = false
+                            } label: {
+                                Label("Hide Keyboard", systemImage: "keyboard.chevron.compact.down")
+                            }
+                        }
+                    }
                     #endif
                 if !text.isEmpty {
                     Button {

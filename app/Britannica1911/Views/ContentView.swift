@@ -43,9 +43,8 @@ struct ContentView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(Tab.settings)
         }
-        // Give the whole app an encyclopedic serif feel.
-        .fontDesign(.serif)
-        // Honor the user's appearance preference (nil = follow the system).
+        // The UI chrome uses the system sans-serif face; only the article
+        // reading view (title + body) opts back into serif explicitly.
         .preferredColorScheme(settings.appearance.colorScheme)
     }
 }

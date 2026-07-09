@@ -9,14 +9,13 @@ struct NotebookTab: View {
     @State private var section: Section = .bookmarks
 
     enum Section: String, CaseIterable, Identifiable {
-        case bookmarks, notes, searches, random
+        case bookmarks, notes, recent
         var id: String { rawValue }
         var label: String {
             switch self {
             case .bookmarks: return "Bookmarks"
             case .notes:     return "Notes"
-            case .searches:  return "Searches"
-            case .random:    return "Random"
+            case .recent:    return "Recent"
             }
         }
     }
@@ -35,8 +34,7 @@ struct NotebookTab: View {
                     switch section {
                     case .bookmarks: bookmarksList
                     case .notes:     notesList
-                    case .searches:  recentSearchesList
-                    case .random:    recentRandomList
+                    case .recent:    recentList
                     }
                 }
             }
@@ -125,58 +123,47 @@ struct NotebookTab: View {
         }
     }
 
-    // MARK: - Recent searches
+    // MARK: - Recent (searches + random)
 
     @ViewBuilder
-    private var recentSearchesList: some View {
-        if store.recentSearches.isEmpty {
+    private var recentList: some View {
+        if store.recentSearches.isEmpty && store.recentRandoms.isEmpty {
             ContentPlaceholder(
                 icon: "clock.arrow.circlepath",
-                title: "No recent searches",
-                message: "Searches you run in Browse show up here."
+                title: "Nothing recent yet",
+                message: "Searches you run and random articles you open in Browse show up here."
             )
         } else {
             List {
-                SwiftUI.Section {
-                    ForEach(store.recentSearches, id: \.self) { query in
-                        Button {
-                            store.searchText = query
-                            router.selectedTab = .browse
-                        } label: {
-                            Label(query, systemImage: "clock.arrow.circlepath")
-                                .lineLimit(1)
+                if !store.recentSearches.isEmpty {
+                    SwiftUI.Section {
+                        ForEach(store.recentSearches, id: \.self) { query in
+                            Button {
+                                store.searchText = query
+                                router.selectedTab = .browse
+                            } label: {
+                                Label(query, systemImage: "magnifyingglass")
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                    } header: {
+                        listHeader("Recent searches") { store.clearRecentSearches() }
                     }
-                } header: {
-                    listHeader("Recent searches") { store.clearRecentSearches() }
                 }
-            }
-        }
-    }
 
-    // MARK: - Recent random
-
-    @ViewBuilder
-    private var recentRandomList: some View {
-        if store.recentRandoms.isEmpty {
-            ContentPlaceholder(
-                icon: "die.face.5",
-                title: "No random entries yet",
-                message: "Tap the dice in Browse to open a random article; your history lands here."
-            )
-        } else {
-            List {
-                SwiftUI.Section {
-                    ForEach(store.recentRandoms) { entry in
-                        Button { open(slug: entry.slug) } label: {
-                            Label(entry.title, systemImage: "die.face.5")
-                                .lineLimit(1)
+                if !store.recentRandoms.isEmpty {
+                    SwiftUI.Section {
+                        ForEach(store.recentRandoms) { entry in
+                            Button { open(slug: entry.slug) } label: {
+                                Label(entry.title, systemImage: "die.face.5")
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                    } header: {
+                        listHeader("Recent random") { store.clearRecentRandoms() }
                     }
-                } header: {
-                    listHeader("Recent random") { store.clearRecentRandoms() }
                 }
             }
         }

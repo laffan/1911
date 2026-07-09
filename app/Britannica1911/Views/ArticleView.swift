@@ -368,9 +368,6 @@ struct ArticleView: View {
                 .padding(.vertical, 10)
             }
             .background(.bar)
-            // Prev/next reads as chrome, so use the system sans-serif face here
-            // rather than the app-wide serif.
-            .fontDesign(.default)
         }
     }
 
