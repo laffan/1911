@@ -18,9 +18,8 @@ struct ListenTab: View {
                     playlist
                 }
             }
-            .navigationTitle("Listen")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             #endif
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if listen.currentTrack != nil { NowPlayingBar() }

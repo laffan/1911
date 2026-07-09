@@ -40,11 +40,10 @@ struct NotebookTab: View {
                     }
                 }
             }
-            .navigationTitle("Notebook")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
             .articleDestinations()
+            #if os(iOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
     }
 

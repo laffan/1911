@@ -30,9 +30,8 @@ struct SettingsTab: View {
                 case .listen:     ListenSettings()
                 }
             }
-            .navigationTitle("Settings")
             #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             #endif
         }
     }
@@ -71,6 +70,7 @@ private struct AppearanceSettings: View {
 
 private struct ListenSettings: View {
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var listen: ListenStore
     @State private var keyInput = ""
     @FocusState private var keyFocused: Bool
 
@@ -122,6 +122,41 @@ private struct ListenSettings: View {
                 .pickerStyle(.navigationLink)
                 #endif
                 .disabled(!settings.hasAPIKey)
+            }
+
+            Section {
+                if listen.debugLog.isEmpty {
+                    Text("No requests yet. Each OpenAI request and response is logged here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(listen.debugLog) { entry in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.date.formatted(date: .omitted, time: .standard))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(entry.message)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(entry.isError ? Color.red : Color.primary)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("OpenAI log")
+                    Spacer()
+                    if !listen.debugLog.isEmpty {
+                        Button("Clear") { listen.clearLog() }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                    }
+                }
+                .textCase(nil)
+            } footer: {
+                Text("Every text-to-speech request and its response (including errors) is recorded here for debugging.")
             }
         }
         .onAppear { keyInput = settings.apiKey }

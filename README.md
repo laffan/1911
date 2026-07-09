@@ -146,16 +146,24 @@ A serif-styled bottom tab bar with four sections — **Browse**, **Notebook**,
   - **Appearance** — follow the **System** theme or force **Light** / **Dark**,
     and pick an **article text size**.
   - **Listen** — store your **OpenAI API key** (kept in the Keychain, persisted
-    between launches) and choose a **voice** once authenticated.
+    between launches), choose a **voice** once authenticated, and inspect a
+    **debug log** of every OpenAI request and response (including errors).
 - **Read** — articles render in a serif body at your chosen text size, with a
-  volume/page citation, a tappable **contributor byline**, a **Listen** button,
+  volume/page citation, a tappable **contributor byline**, a **Listen** control,
   and **See also** cross-reference chips. The body is **freely selectable**: pick
   any passage and the edit menu offers **Send to Notebook** alongside the usual
-  Copy / Look Up / Share. Previous/next navigation stays **pinned to the bottom**
-  while the article scrolls beneath it; moving between neighbours **pages in
-  place** with a directional slide (and a horizontal **swipe**), so Back always
-  returns to the list you came from. On **iPad** the reading column (and the
-  Browse index) is centered at article width, with the title centered above it.
+  Copy / Look Up / Share. The **Listen** control shows an **estimated OpenAI
+  cost** for confirmation before generating; once a recording exists it becomes
+  an inline **mini-player**. Previous/next navigation stays **pinned to the
+  bottom** (in a sans-serif face) while the article scrolls beneath it; moving
+  between neighbours **pages in place** with a directional slide (and a
+  horizontal **swipe**), so Back always returns to the list you came from. On
+  **iPad** the reading column (and the Browse index) is centered at article
+  width, with the title centered above it.
+
+The panes themselves have no title bars — the bottom tab bar's active state is
+label enough, and Browse offers a **Hide Keyboard** button (and swipe-to-dismiss)
+so the on-screen keyboard never covers the A–Z rail.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
 
@@ -170,8 +178,11 @@ endpoint (`tts-1`), streams back an mp3, and stores it under
 `Documents/ListenAudio` with its metadata. Long articles are split under the
 API's per-request character limit and the mp3 segments are concatenated. Your
 API key is entered in **Settings › Listen** and held in the Keychain — it never
-leaves the device except in the request to OpenAI. Playback uses `AVAudioPlayer`
-with a spoken-audio session; tracks auto-advance through the playlist.
+leaves the device except in the request to OpenAI. Before each request the
+reader is shown the character count and an **estimated cost** (OpenAI's `tts-1`
+list price), and every request/response is recorded to a debug log surfaced in
+Settings. Playback uses `AVAudioPlayer` with a spoken-audio session; tracks
+auto-advance through the playlist.
 
 Playback **continues in the background and on the lock screen** (the app
 declares the `audio` background mode on iOS). Track title and progress are

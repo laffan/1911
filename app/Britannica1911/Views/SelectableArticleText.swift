@@ -23,12 +23,23 @@ struct SelectableArticleText: UIViewRepresentable {
         textView.dataDetectorTypes = []
         textView.delegate = context.coordinator
         textView.setContentCompressionResistancePriority(.required, for: .vertical)
+        // Don't let the text view start a drag-and-drop session on a horizontal
+        // pan; that would swallow the article's swipe-to-page gesture. Selection
+        // (long-press) still works.
+        textView.textDragInteraction?.isEnabled = false
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.onSendToNotebook = onSendToNotebook
-        textView.attributedText = Self.attributed(text, fontSize: fontSize)
+        // Only rebuild the attributed text when it actually changes. Otherwise a
+        // frequent re-render (e.g. audio progress ticking) would reset the user's
+        // in-progress text selection.
+        if context.coordinator.appliedText != text || context.coordinator.appliedFontSize != fontSize {
+            textView.attributedText = Self.attributed(text, fontSize: fontSize)
+            context.coordinator.appliedText = text
+            context.coordinator.appliedFontSize = fontSize
+        }
     }
 
     /// iOS 16+: report the height the text needs at the proposed width so the
@@ -59,6 +70,8 @@ struct SelectableArticleText: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var onSendToNotebook: (String) -> Void
+        var appliedText: String?
+        var appliedFontSize: CGFloat?
 
         init(onSendToNotebook: @escaping (String) -> Void) {
             self.onSendToNotebook = onSendToNotebook

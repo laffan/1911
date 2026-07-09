@@ -12,6 +12,7 @@ struct BrowseTab: View {
     @State private var selectedLetter = "A"
     @State private var groups: [BrowseGroup] = []
     @State private var activeGroup: String?
+    @FocusState private var searchFocused: Bool
 
     private let coordSpace = "browseScroll"
 
@@ -33,6 +34,7 @@ struct BrowseTab: View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 SearchField(text: $store.searchText,
+                            focus: $searchFocused,
                             onRandom: openRandom,
                             onSubmit: { store.recordSearch(store.searchText) })
                     .padding(.horizontal)
@@ -45,11 +47,22 @@ struct BrowseTab: View {
                     browseIndex
                 }
             }
-            .navigationTitle("Browse")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
             .articleDestinations()
+            #if os(iOS)
+            // No pane header — the tab bar's active state is enough.
+            .toolbar(.hidden, for: .navigationBar)
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button {
+                        searchFocused = false
+                    } label: {
+                        Label("Hide Keyboard", systemImage: "keyboard.chevron.compact.down")
+                    }
+                }
+            }
+            #endif
         }
         .onAppear {
             if groups.isEmpty {
@@ -283,6 +296,7 @@ struct BrowseTab: View {
 /// top of the Browse pane.
 struct SearchField: View {
     @Binding var text: String
+    var focus: FocusState<Bool>.Binding
     var onRandom: () -> Void
     var onSubmit: () -> Void
 
@@ -293,6 +307,7 @@ struct SearchField: View {
                     .foregroundStyle(.secondary)
                 TextField("Search 1911 Britannica", text: $text)
                     .textFieldStyle(.plain)
+                    .focused(focus)
                     .submitLabel(.search)
                     .onSubmit(onSubmit)
                     .autocorrectionDisabled()

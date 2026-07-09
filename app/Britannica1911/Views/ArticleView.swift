@@ -20,10 +20,24 @@ struct ArticleView: View {
 
     // Listen / notebook feedback
     @State private var isGenerating = false
-    @State private var showNeedsKey = false
-    @State private var errorMessage: String?
-    @State private var addedTrack: AudioTrack?
     @State private var showNoteSaved = false
+    @State private var activeAlert: ArticleAlert?
+
+    /// A queued audio request awaiting the reader's cost confirmation.
+    struct PendingGeneration {
+        let article: Article
+        let characters: Int
+        let cost: Double
+    }
+
+    /// The single alert this screen can show at a time. (SwiftUI supports only
+    /// one `.alert` per view reliably, so they're modeled as one enum.)
+    enum ArticleAlert {
+        case needsKey
+        case error(String)
+        case added(AudioTrack)
+        case confirmCost(PendingGeneration)
+    }
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
@@ -74,32 +88,59 @@ struct ArticleView: View {
                 }
         )
         .overlay(alignment: .top) { noteSavedToast }
-        .alert("OpenAI key needed", isPresented: $showNeedsKey) {
+        .alert(alertTitle,
+               isPresented: Binding(get: { activeAlert != nil },
+                                    set: { if !$0 { activeAlert = nil } }),
+               presenting: activeAlert) { alert in
+            alertActions(alert)
+        } message: { alert in
+            alertMessage(alert)
+        }
+    }
+
+    // MARK: - Alerts
+
+    private var alertTitle: String {
+        guard let activeAlert else { return "" }
+        switch activeAlert {
+        case .needsKey:     return "OpenAI key needed"
+        case .error:        return "Couldn’t create audio"
+        case .added:        return "Ready to Listen"
+        case .confirmCost:  return "Generate audio?"
+        }
+    }
+
+    @ViewBuilder
+    private func alertActions(_ alert: ArticleAlert) -> some View {
+        switch alert {
+        case .needsKey:
             Button("Open Settings") { router.selectedTab = .settings }
             Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Add your OpenAI API key in Settings › Listen to create an audio version.")
-        }
-        .alert("Couldn’t create audio",
-               isPresented: Binding(get: { errorMessage != nil },
-                                    set: { if !$0 { errorMessage = nil } })) {
+        case .error:
             Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "")
-        }
-        .alert("Ready to Listen",
-               isPresented: Binding(get: { addedTrack != nil },
-                                    set: { if !$0 { addedTrack = nil } })) {
+        case .added(let track):
             Button("Play Now") {
-                if let track = addedTrack {
-                    router.selectedTab = .listen
-                    listen.play(track)
-                }
-                addedTrack = nil
+                router.selectedTab = .listen
+                listen.play(track)
             }
-            Button("Later", role: .cancel) { addedTrack = nil }
-        } message: {
-            Text("“\(addedTrack?.title ?? "This article")” was added to your Listen playlist.")
+            Button("Later", role: .cancel) {}
+        case .confirmCost(let pending):
+            Button("Generate") { startListen(pending.article) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private func alertMessage(_ alert: ArticleAlert) -> some View {
+        switch alert {
+        case .needsKey:
+            Text("Add your OpenAI API key in Settings › Listen to create an audio version.")
+        case .error(let message):
+            Text(message)
+        case .added(let track):
+            Text("“\(track.title)” was added to your Listen playlist.")
+        case .confirmCost(let pending):
+            Text("≈\(pending.characters) characters · estimated \(OpenAITTS.currencyString(pending.cost)) on OpenAI tts-1, billed to your OpenAI account.")
         }
     }
 
@@ -110,7 +151,7 @@ struct ArticleView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header(article)
 
-                listenButton(article)
+                listenSection(article)
 
                 if !article.authors.isEmpty {
                     byline(article.authors)
@@ -170,9 +211,21 @@ struct ArticleView: View {
 
     // MARK: - Listen
 
+    /// A ready-to-play mini-player once a recording exists for this article,
+    /// otherwise the "Listen" button that requests one (after cost confirmation).
+    @ViewBuilder
+    private func listenSection(_ article: Article) -> some View {
+        if let track = listen.track(forArticle: article.slug) {
+            ArticleListenPlayer(track: track)
+                .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
+        } else {
+            listenButton(article)
+        }
+    }
+
     private func listenButton(_ article: Article) -> some View {
         Button {
-            startListen(article)
+            requestListen(article)
         } label: {
             HStack(spacing: 6) {
                 if isGenerating {
@@ -194,8 +247,18 @@ struct ArticleView: View {
         .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
     }
 
+    /// Check for a key, then show the estimated cost before sending the request.
+    private func requestListen(_ article: Article) {
+        guard settings.hasAPIKey else { activeAlert = .needsKey; return }
+        let characters = ListenStore.readableText(from: article).count
+        activeAlert = .confirmCost(PendingGeneration(
+            article: article,
+            characters: characters,
+            cost: OpenAITTS.estimatedCost(forCharacters: characters)
+        ))
+    }
+
     private func startListen(_ article: Article) {
-        guard settings.hasAPIKey else { showNeedsKey = true; return }
         isGenerating = true
         Task { @MainActor in
             do {
@@ -203,10 +266,10 @@ struct ArticleView: View {
                                                        apiKey: settings.apiKey,
                                                        voice: settings.voice)
                 isGenerating = false
-                addedTrack = track
+                activeAlert = .added(track)
             } catch {
                 isGenerating = false
-                errorMessage = error.localizedDescription
+                activeAlert = .error(error.localizedDescription)
             }
         }
     }
@@ -305,6 +368,9 @@ struct ArticleView: View {
                 .padding(.vertical, 10)
             }
             .background(.bar)
+            // Prev/next reads as chrome, so use the system sans-serif face here
+            // rather than the app-wide serif.
+            .fontDesign(.default)
         }
     }
 
@@ -372,5 +438,57 @@ struct ArticleView: View {
                 Capsule().fill(resolved ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
             )
             .foregroundStyle(resolved ? Color.accentColor : Color.secondary)
+    }
+}
+
+/// A compact inline player shown at the top of an article once a recording
+/// exists for it: play/pause plus a progress bar that fills while it plays.
+private struct ArticleListenPlayer: View {
+    let track: AudioTrack
+    @EnvironmentObject var listen: ListenStore
+
+    private var isCurrent: Bool { listen.currentTrackID == track.id }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    if isCurrent { listen.togglePlayPause() } else { listen.play(track) }
+                } label: {
+                    Image(systemName: (isCurrent && listen.isPlaying) ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 34))
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Audio version")
+                        .font(.subheadline.weight(.medium))
+                    Text(statusText)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Color.secondary)
+                }
+                Spacer()
+            }
+            ProgressView(value: fraction)
+                .tint(Color.accentColor)
+        }
+        .foregroundStyle(Color.accentColor)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.12)))
+    }
+
+    private var fraction: Double {
+        guard isCurrent, listen.duration > 0 else { return 0 }
+        return min(listen.currentTime / listen.duration, 1)
+    }
+
+    private var statusText: String {
+        if isCurrent {
+            return "\(TimeFormat.string(from: listen.currentTime)) / \(TimeFormat.string(from: listen.duration))"
+        }
+        if let duration = track.duration {
+            return "\(track.voice) · \(TimeFormat.string(from: duration))"
+        }
+        return track.voice
     }
 }

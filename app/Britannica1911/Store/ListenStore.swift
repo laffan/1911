@@ -26,6 +26,21 @@ struct AudioTrack: Codable, Identifiable, Hashable {
     }
 }
 
+/// One line in the OpenAI TTS debug log (a request note or a response result).
+struct TTSLogEntry: Codable, Identifiable, Hashable {
+    let id: UUID
+    let date: Date
+    let message: String
+    let isError: Bool
+
+    init(id: UUID = UUID(), date: Date = Date(), message: String, isError: Bool) {
+        self.id = id
+        self.date = date
+        self.message = message
+        self.isError = isError
+    }
+}
+
 /// Owns the Listen playlist and a simple AVAudioPlayer-backed media player, and
 /// drives on-device text-to-speech synthesis through the OpenAI API.
 @MainActor
@@ -36,18 +51,30 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var currentTime: Double = 0
     @Published private(set) var duration: Double = 0
 
+    /// A rolling record of OpenAI TTS requests/responses, surfaced in Settings
+    /// for debugging (most recent first).
+    @Published private(set) var debugLog: [TTSLogEntry] = []
+
     private var player: AVAudioPlayer?
     private var timer: Timer?
     private var remoteCommandsConfigured = false
     private let defaults = UserDefaults.standard
     private let tracksKey = "listenTracks"
+    private let logKey = "listenDebugLog"
+    private let maxLog = 200
 
     override init() {
         super.init()
         loadTracks()
+        loadLog()
     }
 
     var currentTrack: AudioTrack? { tracks.first { $0.id == currentTrackID } }
+
+    /// The most recently generated recording for a given article, if any.
+    func track(forArticle slug: String) -> AudioTrack? {
+        tracks.first { $0.articleSlug == slug }
+    }
 
     // MARK: - Storage
 
@@ -74,16 +101,73 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
+    // MARK: - Debug log
+
+    func appendLog(_ message: String, isError: Bool) {
+        debugLog.insert(TTSLogEntry(message: message, isError: isError), at: 0)
+        if debugLog.count > maxLog { debugLog.removeLast(debugLog.count - maxLog) }
+        saveLog()
+    }
+
+    func clearLog() {
+        debugLog = []
+        defaults.removeObject(forKey: logKey)
+    }
+
+    private func loadLog() {
+        if let data = defaults.data(forKey: logKey),
+           let saved = try? JSONDecoder().decode([TTSLogEntry].self, from: data) {
+            debugLog = saved
+        }
+    }
+
+    private func saveLog() {
+        if let data = try? JSONEncoder().encode(debugLog) {
+            defaults.set(data, forKey: logKey)
+        }
+    }
+
     // MARK: - Generation
 
-    /// Synthesize an article to speech and add it to the playlist (newest first).
+    /// Synthesize an article to speech and add it to the playlist (newest first),
+    /// logging each request/response to `debugLog` along the way.
     func generate(article: Article, apiKey: String, voice: TTSVoice) async throws -> AudioTrack {
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            appendLog("No API key set.", isError: true)
+            throw OpenAITTS.TTSError.missingKey
+        }
+
         let text = Self.readableText(from: article)
-        let data = try await OpenAITTS.synthesize(text: text, apiKey: apiKey, voice: voice.rawValue)
+        let chunks = OpenAITTS.chunk(text, max: OpenAITTS.maxChunk)
+        let estimate = OpenAITTS.currencyString(OpenAITTS.estimatedCost(forCharacters: text.count))
+        appendLog("→ “\(article.title)” · voice \(voice.rawValue) · \(text.count) chars · \(chunks.count) chunk(s) · est. \(estimate)",
+                  isError: false)
+
+        var audio = Data()
+        for (index, piece) in chunks.enumerated() {
+            do {
+                let (data, status) = try await OpenAITTS.requestSpeech(piece, apiKey: key, voice: voice.rawValue)
+                appendLog("✓ Chunk \(index + 1)/\(chunks.count): HTTP \(status), \(Self.byteString(data.count))",
+                          isError: false)
+                audio.append(data)
+            } catch {
+                if case let OpenAITTS.TTSError.http(status, body) = error {
+                    appendLog("✗ Chunk \(index + 1)/\(chunks.count): HTTP \(status) — \(body)", isError: true)
+                } else {
+                    appendLog("✗ Chunk \(index + 1)/\(chunks.count): \(error.localizedDescription)", isError: true)
+                }
+                throw error
+            }
+        }
+        guard !audio.isEmpty else {
+            appendLog("✗ Empty audio response.", isError: true)
+            throw OpenAITTS.TTSError.empty
+        }
 
         let fileName = "\(UUID().uuidString).mp3"
         let fileURL = audioDir.appendingPathComponent(fileName)
-        try data.write(to: fileURL, options: .atomic)
+        try audio.write(to: fileURL, options: .atomic)
 
         var track = AudioTrack(articleSlug: article.slug, title: article.title,
                                fileName: fileName, voice: voice.label)
@@ -91,7 +175,13 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
         tracks.insert(track, at: 0)
         saveTracks()
+        appendLog("✓ Saved \(Self.byteString(audio.count)).", isError: false)
         return track
+    }
+
+    private static func byteString(_ bytes: Int) -> String {
+        let kb = Double(bytes) / 1024
+        return kb >= 1024 ? String(format: "%.1f MB", kb / 1024) : String(format: "%.0f KB", kb)
     }
 
     /// Title followed by the body, lightly cleaned for narration.
@@ -301,8 +391,20 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
 /// concatenated (mp3 frames play back seamlessly when joined).
 enum OpenAITTS {
     private static let endpoint = URL(string: "https://api.openai.com/v1/audio/speech")!
-    private static let model = "tts-1"
-    private static let maxChunk = 3800   // safely under the 4096-char API limit
+    static let model = "tts-1"
+    static let maxChunk = 3800   // safely under the 4096-char API limit
+    /// OpenAI `tts-1` list price, USD per 1,000,000 input characters.
+    static let pricePerMillionCharacters = 15.0
+
+    /// Estimated USD cost of synthesizing `count` characters with `tts-1`.
+    static func estimatedCost(forCharacters count: Int) -> Double {
+        Double(count) / 1_000_000 * pricePerMillionCharacters
+    }
+
+    /// Format a USD amount, keeping extra precision for sub-cent estimates.
+    static func currencyString(_ value: Double) -> String {
+        value < 0.01 ? String(format: "$%.4f", value) : String(format: "$%.2f", value)
+    }
 
     enum TTSError: LocalizedError {
         case missingKey
@@ -322,19 +424,9 @@ enum OpenAITTS {
         }
     }
 
-    static func synthesize(text: String, apiKey: String, voice: String) async throws -> Data {
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { throw TTSError.missingKey }
-
-        var audio = Data()
-        for piece in chunk(text, max: maxChunk) {
-            audio.append(try await request(piece, apiKey: key, voice: voice))
-        }
-        guard !audio.isEmpty else { throw TTSError.empty }
-        return audio
-    }
-
-    private static func request(_ input: String, apiKey: String, voice: String) async throws -> Data {
+    /// One request for a single chunk of text. Returns the mp3 data and the HTTP
+    /// status code; throws `TTSError.http` with the response body on failure.
+    static func requestSpeech(_ input: String, apiKey: String, voice: String) async throws -> (data: Data, status: Int) {
         var req = URLRequest(url: endpoint)
         req.httpMethod = "POST"
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -351,11 +443,11 @@ enum OpenAITTS {
         guard (200..<300).contains(http.statusCode) else {
             throw TTSError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
         }
-        return data
+        return (data, http.statusCode)
     }
 
     /// Pull `error.message` out of an OpenAI JSON error body, if present.
-    private static func friendlyMessage(from body: String) -> String {
+    static func friendlyMessage(from body: String) -> String {
         guard let data = body.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let error = json["error"] as? [String: Any],
