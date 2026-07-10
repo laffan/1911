@@ -8,7 +8,7 @@ struct ListenTab: View {
     var body: some View {
         NavigationStack {
             Group {
-                if listen.tracks.isEmpty {
+                if listen.tracks.isEmpty && listen.generation == nil {
                     ContentPlaceholder(
                         icon: "headphones",
                         title: "Nothing to listen to yet",
@@ -21,6 +21,9 @@ struct ListenTab: View {
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let progress = listen.generation { GeneratingBanner(progress: progress) }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if listen.currentTrack != nil { NowPlayingBar() }
             }
@@ -73,6 +76,38 @@ struct ListenTab: View {
         }
         parts.append(track.createdAt.formatted(date: .abbreviated, time: .omitted))
         return parts.joined(separator: " · ")
+    }
+}
+
+/// A top banner shown while an article is being synthesized to audio.
+struct GeneratingBanner: View {
+    let progress: ListenStore.GenerationProgress
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Generating “\(progress.title)”")
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                    Text(progress.total > 1 ? "Clip \(min(progress.completed + 1, progress.total)) of \(progress.total)" : "Processing…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("\(Int(progress.fraction * 100))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: progress.fraction)
+                .tint(Color.accentColor)
+            Divider()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .background(.bar)
     }
 }
 

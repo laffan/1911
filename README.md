@@ -178,10 +178,14 @@ it is simply not surfaced in the reading UI.)
 The **Listen** button on an article sends its text to OpenAI's
 [`/v1/audio/speech`](https://developers.openai.com/api/docs/guides/text-to-speech)
 endpoint (`tts-1`), streams back an mp3, and stores it under
-`Documents/ListenAudio` with its metadata. Long articles are split under the
-API's per-request character limit and the mp3 segments are concatenated. Your
-API key is entered in **Settings › Listen** and held in the Keychain — it never
-leaves the device except in the request to OpenAI. Before each request the
+`Documents/ListenAudio` with its metadata. Long articles are split into several
+requests (a couple of thousand characters each) whose mp3 responses are stitched
+together; each request runs on a long-timeout session and is retried a few times
+on transient failures, so full-length entries no longer time out. **Progress is
+shown live** — an inline bar on the article and a banner in the Listen pane
+report "clip N of M" as the audio is built. Your API key is entered in
+**Settings › Listen** and held in the Keychain — it never leaves the device
+except in the request to OpenAI. Before each request the
 reader is shown the character count and an **estimated cost** (OpenAI's `tts-1`
 list price), and every request/response is recorded to a debug log surfaced in
 Settings. Playback uses `AVAudioPlayer` with a spoken-audio session; tracks

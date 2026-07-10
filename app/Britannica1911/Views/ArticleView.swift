@@ -19,7 +19,6 @@ struct ArticleView: View {
     @State private var goingForward = true
 
     // Listen / notebook feedback
-    @State private var isGenerating = false
     @State private var showNoteSaved = false
     @State private var activeAlert: ArticleAlert?
 
@@ -211,11 +210,14 @@ struct ArticleView: View {
 
     // MARK: - Listen
 
-    /// A ready-to-play mini-player once a recording exists for this article,
-    /// otherwise the "Listen" button that requests one (after cost confirmation).
+    /// While this article is synthesizing, a progress view; once a recording
+    /// exists, a mini-player; otherwise the "Listen" button (after cost confirm).
     @ViewBuilder
     private func listenSection(_ article: Article) -> some View {
-        if let track = listen.track(forArticle: article.slug) {
+        if let progress = listen.generation, progress.articleSlug == article.slug {
+            ArticleListenProgress(progress: progress)
+                .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
+        } else if let track = listen.track(forArticle: article.slug) {
             ArticleListenPlayer(track: track)
                 .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
         } else {
@@ -228,13 +230,8 @@ struct ArticleView: View {
             requestListen(article)
         } label: {
             HStack(spacing: 6) {
-                if isGenerating {
-                    ProgressView().controlSize(.small)
-                    Text("Preparing audio…")
-                } else {
-                    Image(systemName: "headphones")
-                    Text("Listen")
-                }
+                Image(systemName: "headphones")
+                Text("Listen")
             }
             .font(.subheadline.weight(.medium))
             .padding(.horizontal, 14)
@@ -243,7 +240,7 @@ struct ArticleView: View {
             .foregroundStyle(Color.accentColor)
         }
         .buttonStyle(.plain)
-        .disabled(isGenerating)
+        .disabled(listen.generation != nil)
         .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
     }
 
@@ -259,16 +256,13 @@ struct ArticleView: View {
     }
 
     private func startListen(_ article: Article) {
-        isGenerating = true
         Task { @MainActor in
             do {
                 let track = try await listen.generate(article: article,
                                                        apiKey: settings.apiKey,
                                                        voice: settings.voice)
-                isGenerating = false
                 activeAlert = .added(track)
             } catch {
-                isGenerating = false
                 activeAlert = .error(error.localizedDescription)
             }
         }
@@ -487,5 +481,38 @@ private struct ArticleListenPlayer: View {
             return "\(track.voice) · \(TimeFormat.string(from: duration))"
         }
         return track.voice
+    }
+}
+
+/// Inline progress shown at the top of an article while its audio synthesizes.
+private struct ArticleListenProgress: View {
+    let progress: ListenStore.GenerationProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(statusText)
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                if progress.total > 1 {
+                    Text("\(Int(progress.fraction * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(Color.secondary)
+                }
+            }
+            ProgressView(value: progress.fraction)
+                .tint(Color.accentColor)
+        }
+        .foregroundStyle(Color.accentColor)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.12)))
+    }
+
+    private var statusText: String {
+        progress.total > 1
+            ? "Generating audio… clip \(min(progress.completed + 1, progress.total)) of \(progress.total)"
+            : "Generating audio…"
     }
 }

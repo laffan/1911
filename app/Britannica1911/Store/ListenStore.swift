@@ -55,6 +55,19 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
     /// for debugging (most recent first).
     @Published private(set) var debugLog: [TTSLogEntry] = []
 
+    /// Progress of an in-flight audio generation, or `nil` when idle. Observed by
+    /// the article's Listen control and the Listen pane.
+    @Published private(set) var generation: GenerationProgress?
+
+    /// Live progress for the article currently being synthesized.
+    struct GenerationProgress: Equatable {
+        let articleSlug: String
+        let title: String
+        let total: Int          // number of chunks
+        var completed: Int      // chunks finished
+        var fraction: Double { total > 0 ? min(Double(completed) / Double(total), 1) : 0 }
+    }
+
     private var player: AVAudioPlayer?
     private var timer: Timer?
     private var remoteCommandsConfigured = false
@@ -130,7 +143,9 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
     // MARK: - Generation
 
     /// Synthesize an article to speech and add it to the playlist (newest first),
-    /// logging each request/response to `debugLog` along the way.
+    /// publishing per-chunk progress and logging each request/response. Long
+    /// articles are split into several requests whose mp3 responses are stitched
+    /// together; each request is retried a few times on transient failures.
     func generate(article: Article, apiKey: String, voice: TTSVoice) async throws -> AudioTrack {
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else {
@@ -144,21 +159,16 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
         appendLog("→ “\(article.title)” · voice \(voice.rawValue) · \(text.count) chars · \(chunks.count) chunk(s) · est. \(estimate)",
                   isError: false)
 
+        generation = GenerationProgress(articleSlug: article.slug, title: article.title,
+                                        total: chunks.count, completed: 0)
+        defer { generation = nil }
+
         var audio = Data()
         for (index, piece) in chunks.enumerated() {
-            do {
-                let (data, status) = try await OpenAITTS.requestSpeech(piece, apiKey: key, voice: voice.rawValue)
-                appendLog("✓ Chunk \(index + 1)/\(chunks.count): HTTP \(status), \(Self.byteString(data.count))",
-                          isError: false)
-                audio.append(data)
-            } catch {
-                if case let OpenAITTS.TTSError.http(status, body) = error {
-                    appendLog("✗ Chunk \(index + 1)/\(chunks.count): HTTP \(status) — \(body)", isError: true)
-                } else {
-                    appendLog("✗ Chunk \(index + 1)/\(chunks.count): \(error.localizedDescription)", isError: true)
-                }
-                throw error
-            }
+            let data = try await synthesizeChunk(piece, key: key, voice: voice.rawValue,
+                                                 index: index, total: chunks.count)
+            audio.append(data)
+            generation?.completed = index + 1
         }
         guard !audio.isEmpty else {
             appendLog("✗ Empty audio response.", isError: true)
@@ -175,8 +185,45 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
         tracks.insert(track, at: 0)
         saveTracks()
-        appendLog("✓ Saved \(Self.byteString(audio.count)).", isError: false)
+        appendLog("✓ Saved \(Self.byteString(audio.count)) · \(chunks.count) clip(s) stitched.", isError: false)
         return track
+    }
+
+    /// One chunk, retried a few times on timeouts / 5xx / rate limits. Client
+    /// errors (bad key, malformed request) fail immediately.
+    private func synthesizeChunk(_ piece: String, key: String, voice: String,
+                                 index: Int, total: Int) async throws -> Data {
+        let maxAttempts = 3
+        var lastError: Error = OpenAITTS.TTSError.empty
+
+        for attempt in 1...maxAttempts {
+            do {
+                let (data, status) = try await OpenAITTS.requestSpeech(piece, apiKey: key, voice: voice)
+                let note = attempt > 1 ? " (attempt \(attempt))" : ""
+                appendLog("✓ Chunk \(index + 1)/\(total): HTTP \(status), \(Self.byteString(data.count))\(note)",
+                          isError: false)
+                return data
+            } catch {
+                lastError = error
+                // Don't retry on client errors other than rate limiting.
+                if case let OpenAITTS.TTSError.http(status, body) = error,
+                   status != 429, (400..<500).contains(status) {
+                    appendLog("✗ Chunk \(index + 1)/\(total): HTTP \(status) — \(body)", isError: true)
+                    throw error
+                }
+                appendLog("⟳ Chunk \(index + 1)/\(total): \(Self.reason(for: error)) — attempt \(attempt)/\(maxAttempts)",
+                          isError: true)
+                if attempt < maxAttempts {
+                    try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000)  // 1.5s, 3s backoff
+                }
+            }
+        }
+        throw lastError
+    }
+
+    private static func reason(for error: Error) -> String {
+        if case let OpenAITTS.TTSError.http(status, _) = error { return "HTTP \(status)" }
+        return error.localizedDescription
     }
 
     private static func byteString(_ bytes: Int) -> String {
@@ -392,9 +439,21 @@ final class ListenStore: NSObject, ObservableObject, AVAudioPlayerDelegate {
 enum OpenAITTS {
     private static let endpoint = URL(string: "https://api.openai.com/v1/audio/speech")!
     static let model = "tts-1"
-    static let maxChunk = 3800   // safely under the 4096-char API limit
+    // Smaller chunks keep each request well under the request timeout and give
+    // finer-grained progress; the limit is 4096 characters.
+    static let maxChunk = 2400
     /// OpenAI `tts-1` list price, USD per 1,000,000 input characters.
     static let pricePerMillionCharacters = 15.0
+
+    /// A session with generous timeouts — TTS of a full chunk can take a while,
+    /// and the default 60s request timeout trips on longer inputs.
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 600
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
 
     /// Estimated USD cost of synthesizing `count` characters with `tts-1`.
     static func estimatedCost(forCharacters count: Int) -> Double {
@@ -438,7 +497,7 @@ enum OpenAITTS {
             "response_format": "mp3",
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw TTSError.empty }
         guard (200..<300).contains(http.statusCode) else {
             throw TTSError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
