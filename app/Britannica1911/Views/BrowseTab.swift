@@ -1,34 +1,30 @@
 import SwiftUI
 
-/// The unified Browse pane: a search field with a Random shortcut at the top,
-/// then either full-text results (while searching) or the A–Z reading index
-/// (when the field is clear).
+/// The Browse pane.
+///
+/// Layout, top to bottom: a **search field** with the Random dice, the **A–Z
+/// rail** and the **sub-section scrubber** (Aa, Ab, Ac …) as horizontal bars
+/// beneath it, and then the reading surface — the whole letter set as columns
+/// a third of a screen wide that scroll sideways (`ColumnReader`).
+///
+/// Typing swaps the columns for ranked full-text results; clearing the field
+/// brings the reading columns back exactly where they were.
 struct BrowseTab: View {
     @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var router: AppRouter
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var hSizeClass
-    #endif
+    @StateObject private var columns = ColumnIndexStore()
+
     @State private var path = NavigationPath()
     @State private var selectedLetter = "A"
+    @State private var entries: [ArticleSummary] = []
     @State private var groups: [BrowseGroup] = []
-    @State private var activeGroup: String?
+    @State private var visibleEntry = 0
+    @State private var jumpTarget: Int?
     @FocusState private var searchFocused: Bool
-
-    private let coordSpace = "browseScroll"
 
     private var isSearching: Bool {
         !store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    /// On iPad (regular width) constrain the browse list to a reading column;
-    /// on iPhone / macOS it fills the available width.
-    private var isRegularWidth: Bool {
-        #if os(iOS)
-        return hSizeClass == .regular
-        #else
-        return false
-        #endif
     }
 
     var body: some View {
@@ -45,7 +41,18 @@ struct BrowseTab: View {
                 if isSearching {
                     searchResults
                 } else {
-                    browseIndex
+                    LetterBar(letters: store.letters, selected: selectedLetter, onSelect: select(letter:))
+                    if !groups.isEmpty {
+                        GroupBar(groups: groups, activeKey: activeGroupKey, onSelect: jump(toGroup:))
+                    }
+                    Divider()
+                    ColumnReader(columns: columns,
+                                 letter: selectedLetter,
+                                 entryCount: entries.count,
+                                 fontSize: settings.fontSize.pointSize,
+                                 jumpTarget: $jumpTarget,
+                                 visibleEntry: $visibleEntry,
+                                 onOpen: { path.append($0) })
                 }
             }
             .articleDestinations()
@@ -61,13 +68,42 @@ struct BrowseTab: View {
             if tab != .browse { searchFocused = false }
         }
         .onAppear {
-            if groups.isEmpty {
+            if entries.isEmpty {
                 if !store.letters.contains(selectedLetter) {
                     selectedLetter = store.letters.first ?? "A"
                 }
                 reload()
             }
         }
+    }
+
+    // MARK: - Letter / sub-section navigation
+
+    private func select(letter: String) {
+        guard letter != selectedLetter else { return }
+        selectedLetter = letter
+        reload()
+    }
+
+    private func reload() {
+        entries = store.entries(startingWith: selectedLetter)
+        groups = Self.groups(for: entries, fallback: selectedLetter)
+        visibleEntry = 0
+        jumpTarget = 0
+    }
+
+    private func jump(toGroup group: BrowseGroup) {
+        jumpTarget = group.startIndex
+    }
+
+    /// The sub-section the reader is currently inside.
+    private var activeGroupKey: String? {
+        guard !groups.isEmpty else { return nil }
+        var active = groups[0].key
+        for group in groups where group.startIndex <= visibleEntry {
+            active = group.key
+        }
+        return active
     }
 
     // MARK: - Random
@@ -117,165 +153,20 @@ struct BrowseTab: View {
         }
     }
 
-    // MARK: - Browse index (A–Z)
-
-    private var browseIndex: some View {
-        ScrollViewReader { proxy in
-            HStack(spacing: 0) {
-                entryList
-                subSectionBar(proxy)
-                alphabetRail
-            }
-            // On iPad, keep the reading column the same width as an article and
-            // centered, rather than stretched across the whole window.
-            .frame(maxWidth: isRegularWidth ? LayoutMetrics.articleContentWidth + 72 : .infinity)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .onChange(of: selectedLetter) { _ in
-                reload()
-                scrollToTop(proxy)
-            }
-        }
-        // Let the keyboard overlay the index instead of squishing the rails;
-        // the Hide Keyboard button dismisses it.
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-    }
-
-    private var entryList: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(groups) { group in
-                    groupAnchor(group.key)
-                    ForEach(group.items) { item in
-                        NavigationLink(value: item.id) {
-                            EntryRow(title: item.title, subtitle: item.preview)
-                                .padding(.vertical, 10)   // more air, no separators
-                        }
-                        .buttonStyle(.plain)
-                        .bookmarkable(slug: item.slug, title: item.title)
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 4)
-        }
-        .coordinateSpace(name: coordSpace)
-        .onPreferenceChange(GroupOffsetKey.self) { updateActiveGroup($0) }
-    }
-
-    private func groupAnchor(_ key: String) -> some View {
-        Color.clear
-            .frame(height: 0)
-            .id(key)
-            .background(
-                GeometryReader { geo in
-                    Color.clear.preference(
-                        key: GroupOffsetKey.self,
-                        value: [key: geo.frame(in: .named(coordSpace)).minY]
-                    )
-                }
-            )
-    }
-
-    // MARK: - Sub-section scrubber (Aa, Ab, …)
-
-    private func subSectionBar(_ proxy: ScrollViewProxy) -> some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                ForEach(groups) { group in
-                    Text(group.key)
-                        .font(.caption2)
-                        .fontWeight(group.key == activeGroup ? .bold : .regular)
-                        .foregroundStyle(group.key == activeGroup ? Color.accentColor : .secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in jump(to: value.location.y, in: geo.size.height, proxy: proxy) }
-            )
-        }
-        .frame(width: 40)
-        .padding(.vertical, 8)
-    }
-
-    private func jump(to y: CGFloat, in height: CGFloat, proxy: ScrollViewProxy) {
-        guard !groups.isEmpty, height > 0 else { return }
-        let fraction = min(max(y / height, 0), 0.999)
-        let index = min(Int(fraction * CGFloat(groups.count)), groups.count - 1)
-        let key = groups[index].key
-        if key != activeGroup {
-            activeGroup = key
-            proxy.scrollTo(key, anchor: .top)
-        }
-    }
-
-    // MARK: - A–Z rail
-
-    private var alphabetRail: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                ForEach(store.letters, id: \.self) { letter in
-                    Text(letter)
-                        .font(.caption)
-                        .fontWeight(letter == selectedLetter ? .bold : .regular)
-                        .foregroundStyle(letter == selectedLetter ? Color.accentColor : .secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in selectLetter(at: value.location.y, in: geo.size.height) }
-            )
-        }
-        .frame(width: 24)
-        .padding(.trailing, 4)
-        .padding(.vertical, 8)
-    }
-
-    private func selectLetter(at y: CGFloat, in height: CGFloat) {
-        let letters = store.letters
-        guard !letters.isEmpty, height > 0 else { return }
-        let fraction = min(max(y / height, 0), 0.999)
-        let index = min(Int(fraction * CGFloat(letters.count)), letters.count - 1)
-        let letter = letters[index]
-        if letter != selectedLetter { selectedLetter = letter }
-    }
-
-    // MARK: - Data
-
-    private func reload() {
-        groups = Self.group(store.browseItems(startingWith: selectedLetter), fallback: selectedLetter)
-        activeGroup = groups.first?.key
-    }
-
-    private func scrollToTop(_ proxy: ScrollViewProxy) {
-        guard let first = groups.first?.key else { return }
-        DispatchQueue.main.async {
-            withAnimation { proxy.scrollTo(first, anchor: .top) }
-        }
-    }
-
-    private func updateActiveGroup(_ offsets: [String: CGFloat]) {
-        // The active sub-section is the last one whose anchor has scrolled to
-        // (or above) the top; before any has, it's the first.
-        let passed = offsets.filter { $0.value <= 8 }
-        let key = passed.max(by: { $0.value < $1.value })?.key
-            ?? offsets.min(by: { $0.value < $1.value })?.key
-        if let key, key != activeGroup { activeGroup = key }
-    }
+    // MARK: - Grouping
 
     /// Group consecutive (already title-sorted) entries by their first two
-    /// letters, e.g. "Aa", "Ab", "Ac".
-    static func group(_ items: [ArticleListItem], fallback: String) -> [BrowseGroup] {
+    /// letters, e.g. "Aa", "Ab", "Ac", recording where each group starts.
+    static func groups(for entries: [ArticleSummary], fallback: String) -> [BrowseGroup] {
         var result: [BrowseGroup] = []
-        for item in items {
-            let key = groupKey(item.title, fallback: fallback)
+        for (index, entry) in entries.enumerated() {
+            let key = groupKey(entry.title, fallback: fallback)
             if let last = result.last, last.key == key {
-                result[result.count - 1] = BrowseGroup(key: key, items: last.items + [item])
+                result[result.count - 1] = BrowseGroup(key: key,
+                                                       startIndex: last.startIndex,
+                                                       count: last.count + 1)
             } else {
-                result.append(BrowseGroup(key: key, items: [item]))
+                result.append(BrowseGroup(key: key, startIndex: index, count: 1))
             }
         }
         return result
@@ -290,6 +181,111 @@ struct BrowseTab: View {
         return String(first).uppercased()
     }
 }
+
+/// A run of consecutive entries sharing their first two letters.
+struct BrowseGroup: Identifiable, Hashable {
+    let key: String
+    /// Index of the group's first entry within the letter's entry list.
+    let startIndex: Int
+    let count: Int
+    var id: String { key }
+}
+
+// MARK: - A–Z rail
+
+/// The alphabet, laid across the top of the pane. Tap a letter, or drag along
+/// the rail to scrub through it.
+///
+/// A scrub highlights letters as your finger passes but only *commits* on
+/// release: changing letter re-measures a whole section of the encyclopaedia,
+/// which is not something to do twenty-six times on the way past.
+struct LetterBar: View {
+    let letters: [String]
+    let selected: String
+    let onSelect: (String) -> Void
+
+    @State var preview: String?
+
+    private var highlighted: String { preview ?? selected }
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                ForEach(letters, id: \.self) { letter in
+                    Text(letter)
+                        .font(.caption)
+                        .fontWeight(letter == highlighted ? .bold : .regular)
+                        .foregroundStyle(letter == highlighted ? Color.accentColor : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in preview = letter(at: value.location.x, width: geo.size.width) }
+                    .onEnded { value in
+                        let picked = letter(at: value.location.x, width: geo.size.width)
+                        preview = nil
+                        if let picked, picked != selected { onSelect(picked) }
+                    }
+            )
+        }
+        .frame(height: 26)
+        .padding(.horizontal, 8)
+    }
+
+    private func letter(at x: CGFloat, width: CGFloat) -> String? {
+        guard !letters.isEmpty, width > 0 else { return nil }
+        let fraction = min(max(x / width, 0), 0.999)
+        return letters[min(Int(fraction * CGFloat(letters.count)), letters.count - 1)]
+    }
+}
+
+// MARK: - Sub-section scrubber
+
+/// The two-letter sub-sections of the current letter (Aa, Ab, Ac …). Tapping
+/// one sends the column reader straight to that run of entries.
+struct GroupBar: View {
+    let groups: [BrowseGroup]
+    let activeKey: String?
+    let onSelect: (BrowseGroup) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(groups) { group in
+                        Button { onSelect(group) } label: {
+                            Text(group.key)
+                                .font(.caption2)
+                                .fontWeight(group.key == activeKey ? .bold : .regular)
+                                .foregroundStyle(group.key == activeKey ? Color.white : Color.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule().fill(group.key == activeKey
+                                                   ? Color.accentColor
+                                                   : Color.secondary.opacity(0.12))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .id(group.key)
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .frame(height: 30)
+            // Keep the section the reader is in visible as they scroll.
+            .onChange(of: activeKey) { key in
+                guard let key else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(key, anchor: .center) }
+            }
+        }
+    }
+}
+
+// MARK: - Search field
 
 /// A rounded search field paired with a Random-article shortcut, sitting at the
 /// top of the Browse pane.
@@ -347,19 +343,5 @@ struct SearchField: View {
             .foregroundStyle(Color.accentColor)
             .help("Open a random article")
         }
-    }
-}
-
-struct BrowseGroup: Identifiable, Hashable {
-    let key: String
-    let items: [ArticleListItem]
-    var id: String { key }
-}
-
-/// Reports each sub-section anchor's vertical offset within the scroll view.
-private struct GroupOffsetKey: PreferenceKey {
-    static var defaultValue: [String: CGFloat] = [:]
-    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
-        value.merge(nextValue()) { _, new in new }
     }
 }

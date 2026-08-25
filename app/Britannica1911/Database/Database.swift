@@ -54,22 +54,60 @@ final class Database {
         }.first
     }
 
-    func browseItems(startingWith letter: String) -> [ArticleListItem] {
+    /// Every entry for a letter, in browse order, *without* their bodies — the
+    /// list the A–Z navigation bars are built from. Cheap even for a letter
+    /// holding thousands of entries, because no article text is read.
+    func entries(startingWith letter: String) -> [ArticleSummary] {
         query(
-            """
-            SELECT id, slug, title, substr(body, 1, 400)
-            FROM articles WHERE first_letter = ? ORDER BY title COLLATE NOCASE
-            """,
+            "SELECT id, slug, title, volume FROM articles WHERE first_letter = ? \(Self.browseOrder)",
             bind: [.text(letter)]
         ) { stmt in
-            ArticleListItem(
+            ArticleSummary(
                 id: sqlite3_column_int64(stmt, 0),
                 slug: String(cString: sqlite3_column_text(stmt, 1)),
                 title: String(cString: sqlite3_column_text(stmt, 2)),
-                bodyPrefix: String(cString: sqlite3_column_text(stmt, 3))
+                volume: columnTextOrNil(stmt, 3)
             )
         }
     }
+
+    /// Stream a letter's entries *with* their bodies, one row at a time, in the
+    /// same order as `entries(startingWith:)`.
+    ///
+    /// The column indexer measures tens of megabytes of text per letter; this
+    /// hands it one article at a time so the whole letter is never resident in
+    /// memory. Return `false` from `row` to stop early (the indexer does this
+    /// when the reader moves to another letter).
+    func forEachEntry(startingWith letter: String, row: (ArticleTextRow) -> Bool) {
+        let sql = "SELECT id, slug, title, volume, pages, body FROM articles WHERE first_letter = ? \(Self.browseOrder)"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, letter, -1, Self.SQLITE_TRANSIENT)
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let entry = ArticleTextRow(
+                id: sqlite3_column_int64(stmt, 0),
+                slug: String(cString: sqlite3_column_text(stmt, 1)),
+                title: String(cString: sqlite3_column_text(stmt, 2)),
+                volume: columnTextOrNil(stmt, 3),
+                pages: columnTextOrNil(stmt, 4),
+                body: String(cString: sqlite3_column_text(stmt, 5))
+            )
+            if !row(entry) { return }
+        }
+    }
+
+    /// Just one entry's text, for re-wrapping a column that has scrolled back
+    /// into view.
+    func body(forArticle id: Int64) -> String? {
+        query("SELECT body FROM articles WHERE id = ?", bind: [.int(id)]) { stmt in
+            String(cString: sqlite3_column_text(stmt, 0))
+        }.first
+    }
+
+    /// Browse order, shared by every letter query so the light entry list and
+    /// the streamed bodies line up row for row (`id` breaks title ties).
+    private static let browseOrder = "ORDER BY title COLLATE NOCASE, id"
 
     // MARK: - Article lookup
 

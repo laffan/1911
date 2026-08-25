@@ -57,16 +57,21 @@ struct NotebookTab: View {
             ContentPlaceholder(
                 icon: "bookmark",
                 title: "No bookmarks yet",
-                message: "Long-press an entry's title and choose Bookmark to save it here."
+                message: "Double-click an entry's title while browsing to save it here."
             )
         } else {
             List {
                 ForEach(store.bookmarks) { bookmark in
                     Button { open(slug: bookmark.slug) } label: {
-                        Text(bookmark.title)
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        HStack(spacing: 6) {
+                            Image(systemName: "bookmark.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            Text(bookmark.title)
+                                .font(.headline)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .swipeActions(edge: .trailing) {

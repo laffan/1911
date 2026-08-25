@@ -12,7 +12,7 @@ struct ListenTab: View {
                     ContentPlaceholder(
                         icon: "headphones",
                         title: "Nothing to listen to yet",
-                        message: "Open an article and tap Listen to create an audio version."
+                        message: "Audio generation is switched off for now; recordings you already made still play here."
                     )
                 } else {
                     playlist

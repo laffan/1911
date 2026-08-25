@@ -23,19 +23,25 @@ struct Neighbor: Hashable {
     let title: String
 }
 
-/// A row in a per-letter browse list: the title plus a short body preview with
-/// the leading headword removed (EB1911 bodies begin by repeating the title).
-struct ArticleListItem: Identifiable, Hashable {
+/// One entry as the column indexer reads it: the metadata the reader shows
+/// plus the body text it paginates.
+struct ArticleTextRow {
     let id: Int64
     let slug: String
     let title: String
-    let bodyPrefix: String
+    let volume: String?
+    let pages: String?
+    let body: String
+}
 
-    var preview: String { Self.stripHeadword(bodyPrefix, title: title) }
-
+/// Text tidying shared by every reading surface.
+enum ArticleText {
     /// Drop the leading headword (the title, printed in caps at the start of the
-    /// body) so the preview shows the definition itself. Falls back to the raw
-    /// text if the opening does not match the title.
+    /// body) so an entry set under its own display title does not repeat it.
+    /// Falls back to the raw text if the opening does not match the title.
+    ///
+    /// Both the column indexer and the column renderer run their text through
+    /// this, so the line counts they compute always agree.
     static func stripHeadword(_ body: String, title: String) -> String {
         let titleKey = title.lowercased().filter { $0.isLetter || $0.isNumber }
         guard !titleKey.isEmpty else {

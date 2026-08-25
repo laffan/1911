@@ -33,12 +33,14 @@ app/
   Britannica1911.xcodeproj          Multiplatform Xcode project (iOS + macOS)
   Britannica1911/
     Britannica1911App.swift         App entry point
-    Views/                          ContentView (TabView), BrowseTab, NotebookTab,
-                                    ListenTab, SettingsTab, ArticleView,
+    Views/                          ContentView (TabView), BrowseTab, ColumnReader,
+                                    NotebookTab, ListenTab, SettingsTab, ArticleView,
                                     SelectableArticleText, AuthorArticlesView, FlowLayout
     Models/Article.swift            Value types (articles, notes, …)
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
+    Store/ColumnLayout.swift        Column geometry, glyph metrics, line breaking
+    Store/ColumnIndexStore.swift    Background pagination of a letter into columns
     Store/SettingsStore.swift       Appearance, font size, OpenAI credentials (Keychain)
     Store/ListenStore.swift         TTS synthesis + audio playlist / media player
     Assets.xcassets                 App icon slot + accent color
@@ -54,8 +56,8 @@ open app/Britannica1911.xcodeproj
 ```
 
 Select the **Britannica1911** scheme and run on an iOS simulator, an iPhone/iPad,
-or **My Mac**. It ships with ~19 sample articles so search, A–Z browse, and
-cross-reference links all work immediately.
+or **My Mac**. It ships with ~19 sample articles so search, the A–Z column
+reader, and cross-reference links all work immediately.
 
 > The project targets **iOS 16 / macOS 13** and has **no third-party
 > dependencies** — it uses Apple's built-in SQLite via `import SQLite3`.
@@ -127,53 +129,108 @@ A bottom tab bar with four sections — **Browse**, **Notebook**, **Listen**,
 system sans-serif face; only the article reading view (title and body) is set
 in serif for an encyclopedic feel.
 
-- **Browse** — search, browse and random in one pane. A **search field** sits at
-  the top with a **Random dice** beside it. Type to get live, ranked full-text
-  results (contributor names are indexed, so you can search by author too); clear
-  the field and the **A–Z reading index** returns — a scrollable list of entries
-  for one letter (title + two-line preview), a **sub-section scrubber**
-  (Aa, Ab, Ac …), and an **A–Z rail**. The dice opens a random article.
+- **Browse** — search and reading in one pane, laid out top to bottom: a
+  **search field** with a **Random dice** beside it, then the **A–Z rail** and
+  the **sub-section scrubber** (Aa, Ab, Ac …) as horizontal bars, then the
+  reading surface itself. That surface sets the whole letter as **newspaper
+  columns a third of a screen wide that scroll sideways** — each entry opens a
+  fresh column under its own title and its **full text flows on** into the
+  columns that follow, entry after entry, in alphabetical order. Tap a letter
+  (or drag along the rail) to change section; tap a sub-section to fly to it.
+  Tapping an entry's title opens it in the full reading view; **double-clicking
+  the title bookmarks it**, and a small **red bookmark** appears beside it
+  (double-click again to remove it). Typing swaps the columns for live, ranked
+  full-text results (contributor names are indexed, so you can search by author
+  too); clearing the field puts you back where you were reading. The dice opens
+  a random article.
 - **Notebook** — a sub-navigation over three kept collections:
-  - **Bookmarks** — articles you've saved. **Long-press any entry's title**
-    anywhere in the app to Bookmark it; **swipe** to remove. Keyed by slug.
+  - **Bookmarks** — articles you've saved. **Double-click an entry's title** in
+    the Browse columns to keep it (or long-press any title anywhere in the app
+    for a Bookmark menu); **swipe** to remove. Keyed by slug.
   - **Notes** — passages you saved with **Send to Notebook** (see Read), each
     linking back to its source article.
   - **Recent** — two sections: **Recent searches** (tap to re-run in Browse) and
     **Recent random** (entries you've opened via the dice), each with its own
     "Clear".
 - **Listen** — a **playlist** of article recordings plus a simple **media
-  player** (play/pause, scrubber, skip). Recordings are generated on demand from
-  the **Listen** button on any article using OpenAI's text-to-speech API and
-  saved on device.
+  player** (play/pause, scrubber, skip). The per-article **Listen** buttons are
+  removed for now, so nothing new is generated; recordings already on the device
+  still play, and the synthesis code (`ListenStore`) is untouched and ready to
+  be wired back up.
 - **Settings** — a sub-navigation:
   - **Appearance** — follow the **System** theme or force **Light** / **Dark**,
     and pick an **article text size**.
   - **Listen** — store your **OpenAI API key** (kept in the Keychain, persisted
     between launches), choose a **voice** once authenticated, and inspect a
     **debug log** of every OpenAI request and response (including errors).
-- **Read** — articles render in a serif body at your chosen text size, with a
-  volume/page citation, a tappable **contributor byline**, a **Listen** control,
-  and **See also** cross-reference chips. The body is **freely selectable**: pick
-  any passage and the edit menu offers **Send to Notebook** alongside the usual
-  Copy / Look Up / Share. The **Listen** control shows an **estimated OpenAI
-  cost** for confirmation before generating; once a recording exists it becomes
-  an inline **mini-player**. Previous/next navigation stays **pinned to the
-  bottom** (in a sans-serif face) while the article scrolls beneath it; moving
+- **Read** — the single-article view, reached from a search hit, a cross
+  reference, a byline or an entry title in the columns. Articles render in a
+  serif body at your chosen text size, with a volume/page citation, a tappable
+  **contributor byline**, and **See also** cross-reference chips. The body is
+  **freely selectable**: pick any passage and the edit menu offers **Send to
+  Notebook** alongside the usual Copy / Look Up / Share. Previous/next
+  navigation stays **pinned to the bottom** (in a sans-serif face) while the
+  article scrolls beneath it; moving
   between neighbours **pages in place** with a directional slide (and a
   horizontal **swipe**), so Back always returns to the list you came from. On
-  **iPad** the reading column (and the Browse index) is centered at article
-  width, with the title centered above it.
+  **iPad** the reading column is centered at article width, with the title
+  centered above it.
 
 The panes themselves have no title bars — the bottom tab bar's active state is
 label enough, and Browse offers a **Hide Keyboard** button (and swipe-to-dismiss)
-so the on-screen keyboard never covers the A–Z rail.
+so the on-screen keyboard never covers the columns.
 - **Browse by contributor** — tap an author's name in a byline to see every
   article they signed in the edition; tap through to any of them.
 
 (The Wikisource source URL is still collected in the database for provenance;
 it is simply not surfaced in the reading UI.)
 
+### The column reader, and how it stays fast
+
+The corpus runs to tens of thousands of printed pages, so the sideways-scrolling
+Browse surface can never lay all of it out. Four things keep it responsive:
+
+1. **The text is broken into lines by hand, not by TextKit.** For each font size
+   the app measures the advance width of ~500 characters once
+   (`GlyphWidths`, cached per face and size), then wraps paragraphs with a
+   greedy line breaker that costs one array lookup per character. Measuring a
+   whole letter of the encyclopaedia takes well under a second instead of the
+   many seconds a full text-layout pass would. Because the table is built from
+   the *same* serif system font `Text` draws with — and because kerning and
+   ligatures only ever pull glyphs closer — a line that fits by this measure
+   always fits on screen.
+2. **Only counts are kept.** A background pass streams the letter's entries out
+   of SQLite one row at a time (`forEachEntry`), wraps each body, records its
+   line and column counts, and throws the text away. That is a few dozen bytes
+   per entry, so the index for an entire letter costs a few hundred kilobytes —
+   and column positions, once assigned, never move.
+3. **The stream only ever grows at the end.** Entries are published to the
+   reader in small batches, in alphabetical order, so columns appear within a
+   frame or two of choosing a letter while measuring continues behind them. New
+   entries always land *after* what is already on screen, so nothing shifts
+   under your finger; a hairline at the top shows the pass finishing.
+4. **Drawing is virtualized and prefetched.** Columns live in a `LazyHStack` at
+   a fixed width, so only the three or four on screen are ever built no matter
+   how far the stream runs. Rendering one needs that entry's wrapped lines,
+   which are recomputed on demand, held in a small LRU, and prefetched a few
+   entries ahead of the viewport on a background queue — so a fast flick draws
+   from the cache rather than waiting on it.
+
+Rotating the device or resizing the window changes the column geometry and so
+re-measures the letter; that is debounced until the resize settles, and the
+existing columns stay readable and scrollable meanwhile.
+
+Long jumps are navigation, not scrolling: the A–Z rail and the sub-section
+scrubber at the top of the pane move the reader straight to an entry's first
+column, which is what keeps the buffer from ever being outrun.
+
 ### Listen (text-to-speech)
+
+> **Currently switched off.** The per-article **Listen** buttons were removed in
+> the column-reader redesign, so nothing new can be generated from the UI right
+> now; everything below still describes `ListenStore`, which is intact, and
+> existing recordings still play from the Listen tab. Restoring the feature
+> means putting the button back on `ArticleView`.
 
 The **Listen** button on an article sends its text to OpenAI's
 [`/v1/audio/speech`](https://developers.openai.com/api/docs/guides/text-to-speech)

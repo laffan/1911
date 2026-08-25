@@ -77,8 +77,10 @@ final class LibraryStore: ObservableObject {
 
     // MARK: - Lookups used by the views
 
-    func browseItems(startingWith letter: String) -> [ArticleListItem] {
-        db?.browseItems(startingWith: letter) ?? []
+    /// Every entry for a letter in browse order (titles only) — the spine the
+    /// A–Z navigation and the column reader are both built on.
+    func entries(startingWith letter: String) -> [ArticleSummary] {
+        db?.entries(startingWith: letter) ?? []
     }
 
     func article(id: Int64) -> Article? { db?.article(id: id) }

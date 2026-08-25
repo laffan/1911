@@ -89,27 +89,6 @@ private struct BookmarkContextMenu: ViewModifier {
     }
 }
 
-/// A title + two-line preview row, shared by the browse and bookmark lists.
-struct EntryRow: View {
-    let title: String
-    var subtitle: String = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.headline)
-            if !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-}
-
 /// A single search hit: title plus a highlighted body snippet.
 struct SearchResultRow: View {
     let result: SearchResult
