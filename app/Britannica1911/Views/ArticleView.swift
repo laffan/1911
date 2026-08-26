@@ -92,20 +92,11 @@ struct ArticleView: View {
 
     // MARK: - Body
 
-    @ViewBuilder
     private func bodyView(_ text: String, article: Article) -> some View {
-        #if os(iOS)
         SelectableArticleText(text: text, fontSize: settings.fontSize.pointSize) { selection in
             sendToNotebook(selection, article: article)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        #else
-        Text(text)
-            .font(.system(size: settings.fontSize.pointSize, design: .serif))
-            .lineSpacing(4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
-        #endif
     }
 
     private func sendToNotebook(_ selection: String, article: Article) {
@@ -154,13 +145,30 @@ struct ArticleView: View {
 
     // MARK: - Header & byline
 
+    /// The headword, with the same keeping gesture as the Browse columns:
+    /// double-click to bookmark, and a red bookmark shows once it is kept.
+    ///
+    /// The title is a control rather than selectable text — a double-click has
+    /// to mean one thing, and the headword is repeated at the head of the body
+    /// below, which *is* selectable.
     private func header(_ article: Article) -> some View {
         VStack(alignment: isRegular ? .center : .leading, spacing: 6) {
-            Text(article.title)
-                .font(.system(.largeTitle, design: .serif).weight(.bold))
-                .multilineTextAlignment(isRegular ? .center : .leading)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(article.title)
+                    .font(.system(.largeTitle, design: .serif).weight(.bold))
+                    .multilineTextAlignment(isRegular ? .center : .leading)
+                if store.isBookmarked(article.slug) {
+                    Image(systemName: "bookmark.fill")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Bookmarked")
+                }
+            }
                 .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
-                .textSelection(.enabled)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    store.toggleBookmark(slug: article.slug, title: article.title)
+                }
                 .bookmarkable(slug: article.slug, title: article.title)
             if let citation = citation(article) {
                 Text(citation)

@@ -12,6 +12,7 @@ import SwiftUI
 /// the letter on a background queue and appends to the stream in order, so the
 /// content under the reader's finger never shifts.
 struct ColumnReader: View {
+    @EnvironmentObject var store: LibraryStore
     @ObservedObject var columns: ColumnIndexStore
 
     let letter: String
@@ -26,6 +27,7 @@ struct ColumnReader: View {
     /// An entry asked for before the index had reached it. Retried as the
     /// build publishes more entries.
     @State var pendingJump: Int?
+    @State var showNoteSaved = false
 
     private static let scrollSpace = "columnReaderScroll"
 
@@ -91,6 +93,7 @@ struct ColumnReader: View {
             .onChange(of: columns.index.entries.count) { _ in honourPendingJump(proxy) }
             .onAppear { restorePosition(proxy) }
             .overlay(alignment: .top) { buildProgress }
+            .overlay(alignment: .top) { noteSavedToast }
         }
     }
 
@@ -98,7 +101,31 @@ struct ColumnReader: View {
         ColumnCell(segments: columns.index.segments(forColumn: column),
                    style: style,
                    columns: columns,
-                   onOpen: onOpen)
+                   onOpen: onOpen,
+                   onSendNote: sendToNotebook)
+    }
+
+    /// Keep a passage the reader selected in one of the columns.
+    private func sendToNotebook(_ passage: String, from entry: EntryLayout) {
+        store.addNote(text: passage, articleSlug: entry.slug, articleTitle: entry.title)
+        withAnimation { showNoteSaved = true }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            withAnimation { showNoteSaved = false }
+        }
+    }
+
+    @ViewBuilder
+    private var noteSavedToast: some View {
+        if showNoteSaved {
+            Label("Saved to Notebook", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(.ultraThinMaterial))
+                .padding(.top, 12)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 
     /// A hairline while the letter is still being measured. Columns already
@@ -166,6 +193,7 @@ struct ColumnCell: View {
     /// wrapped text, and re-rendering on every index update would be waste.
     let columns: ColumnIndexStore
     let onOpen: (Int64) -> Void
+    let onSendNote: (String, EntryLayout) -> Void
 
     @EnvironmentObject var store: LibraryStore
 
@@ -239,15 +267,20 @@ struct ColumnCell: View {
 
     // MARK: Body
 
+    /// The text itself, drawn by the platform text view so any passage of it
+    /// can be selected and sent to the Notebook. It is handed lines that were
+    /// already broken to this exact width, so it re-wraps nothing.
     private func bodyBlock(_ entry: EntryLayout, lines range: Range<Int>) -> some View {
         let wrapped = columns.lines(for: entry)
         let upper = min(range.upperBound, wrapped.count)
         let lower = min(range.lowerBound, upper)
-        return Text(TextColumnizer.render(wrapped[lower..<upper]))
-            .font(.system(size: style.bodyFontSize, design: .serif))
-            .lineSpacing(style.lineSpacing)
-            // Sized from the slots the block was given, not from the lines that
-            // came back, so a short read can never shift what follows it.
+        let text = SelectableArticleText(text: TextColumnizer.render(wrapped[lower..<upper]),
+                                         fontSize: style.bodyFontSize,
+                                         lineSpacing: style.lineSpacing,
+                                         onSendToNotebook: { onSendNote($0, entry) })
+        // Sized from the slots the block was given, not from the lines that came
+        // back, so a short read can never shift what follows it.
+        return text
             .frame(width: style.textWidth,
                    height: CGFloat(range.count) * style.lineHeight,
                    alignment: .topLeading)

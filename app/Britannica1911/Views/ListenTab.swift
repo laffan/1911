@@ -186,3 +186,151 @@ enum TimeFormat {
         return String(format: "%d:%02d", m, s)
     }
 }
+
+/// A Listen control for a single entry, wherever entries are listed.
+///
+/// Shows a spinner while that entry is being synthesized, a play/pause control
+/// once a recording exists, and otherwise a Listen button that confirms the
+/// estimated OpenAI cost before spending anything. Self-contained, so a row in
+/// a list can simply drop one in.
+struct ListenButton: View {
+    let slug: String
+    let title: String
+
+    @EnvironmentObject var store: LibraryStore
+    @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var listen: ListenStore
+    @EnvironmentObject var router: AppRouter
+
+    @State var activeAlert: ListenAlert?
+
+    /// The one alert this control can show at a time. (SwiftUI supports only
+    /// one `.alert` per view reliably, so they are modeled as one enum.)
+    enum ListenAlert {
+        case needsKey
+        case failed(String)
+        case confirmCost(article: Article, characters: Int, cost: Double)
+        case ready(AudioTrack)
+    }
+
+    private var isGenerating: Bool { listen.generation?.articleSlug == slug }
+
+    var body: some View {
+        control
+            .alert(alertTitle,
+                   isPresented: Binding(get: { activeAlert != nil },
+                                        set: { if !$0 { activeAlert = nil } }),
+                   presenting: activeAlert) { alert in
+                alertActions(alert)
+            } message: { alert in
+                alertMessage(alert)
+            }
+    }
+
+    @ViewBuilder
+    private var control: some View {
+        if isGenerating {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 28)
+        } else if let track = listen.track(forArticle: slug) {
+            Button {
+                if listen.currentTrackID == track.id {
+                    listen.togglePlayPause()
+                } else {
+                    listen.play(track)
+                }
+            } label: {
+                Image(systemName: (listen.currentTrackID == track.id && listen.isPlaying)
+                      ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .help("Play the recording of “\(title)”")
+        } else {
+            Button(action: request) {
+                Image(systemName: "headphones")
+                    .font(.body)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            .disabled(listen.generation != nil)
+            .help("Create an audio version of “\(title)”")
+        }
+    }
+
+    // MARK: - Generating
+
+    /// Check for a key, then show the estimated cost before sending the request.
+    private func request() {
+        guard let article = store.article(slug: slug) else { return }
+        guard settings.hasAPIKey else { activeAlert = .needsKey; return }
+        let characters = ListenStore.readableText(from: article).count
+        activeAlert = .confirmCost(article: article,
+                                   characters: characters,
+                                   cost: OpenAITTS.estimatedCost(forCharacters: characters))
+    }
+
+    private func generate(_ article: Article) {
+        Task { @MainActor in
+            do {
+                let track = try await listen.generate(article: article,
+                                                      apiKey: settings.apiKey,
+                                                      voice: settings.voice)
+                activeAlert = .ready(track)
+            } catch {
+                activeAlert = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    // MARK: - Alerts
+
+    private var alertTitle: String {
+        guard let activeAlert else { return "" }
+        switch activeAlert {
+        case .needsKey:    return "OpenAI key needed"
+        case .failed:      return "Couldn’t create audio"
+        case .ready:       return "Ready to Listen"
+        case .confirmCost: return "Generate audio?"
+        }
+    }
+
+    @ViewBuilder
+    private func alertActions(_ alert: ListenAlert) -> some View {
+        switch alert {
+        case .needsKey:
+            Button("Open Settings") { router.selectedTab = .settings }
+            Button("Cancel", role: .cancel) {}
+        case .failed:
+            Button("OK", role: .cancel) {}
+        case .ready(let track):
+            Button("Play Now") {
+                router.selectedTab = .listen
+                listen.play(track)
+            }
+            Button("Later", role: .cancel) {}
+        case .confirmCost(let article, _, _):
+            Button("Generate") { generate(article) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder
+    private func alertMessage(_ alert: ListenAlert) -> some View {
+        switch alert {
+        case .needsKey:
+            Text("Add your OpenAI API key in Settings › Listen to create an audio version.")
+        case .failed(let message):
+            Text(message)
+        case .ready(let track):
+            Text("“\(track.title)” was added to your Listen playlist.")
+        case .confirmCost(_, let characters, let cost):
+            Text("≈\(characters) characters · estimated \(OpenAITTS.currencyString(cost)) on OpenAI tts-1, billed to your OpenAI account.")
+        }
+    }
+}

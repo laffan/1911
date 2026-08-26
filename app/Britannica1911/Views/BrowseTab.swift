@@ -253,36 +253,45 @@ struct GroupBar: View {
     let onSelect: (BrowseGroup) -> Void
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(groups) { group in
-                        Button { onSelect(group) } label: {
-                            Text(group.key)
-                                .font(.caption2)
-                                .fontWeight(group.key == activeKey ? .bold : .regular)
-                                .foregroundStyle(group.key == activeKey ? Color.white : Color.secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule().fill(group.key == activeKey
-                                                   ? Color.accentColor
-                                                   : Color.secondary.opacity(0.12))
-                                )
+        // Centred when the sub-sections fit across the pane, scrolling from the
+        // middle outwards when they don't: the row is held to at least the
+        // pane's width, and a frame with no stated alignment centres it.
+        GeometryReader { geo in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(groups) { group in
+                            chip(group)
                         }
-                        .buttonStyle(.plain)
-                        .id(group.key)
                     }
+                    .padding(.horizontal, 12)
+                    .frame(minWidth: geo.size.width)
                 }
-                .padding(.horizontal, 12)
-            }
-            .frame(height: 30)
-            // Keep the section the reader is in visible as they scroll.
-            .onChange(of: activeKey) { key in
-                guard let key else { return }
-                withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(key, anchor: .center) }
+                // Keep the section the reader is in visible as they scroll.
+                .onChange(of: activeKey) { key in
+                    guard let key else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(key, anchor: .center) }
+                }
             }
         }
+        .frame(height: 30)
+    }
+
+    private func chip(_ group: BrowseGroup) -> some View {
+        let isActive = group.key == activeKey
+        return Button { onSelect(group) } label: {
+            Text(group.key)
+                .font(.caption2)
+                .fontWeight(isActive ? .bold : .regular)
+                .foregroundStyle(isActive ? Color.white : Color.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(isActive ? Color.accentColor : Color.secondary.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+        .id(group.key)
     }
 }
 

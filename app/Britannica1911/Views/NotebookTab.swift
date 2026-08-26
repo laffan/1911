@@ -62,18 +62,22 @@ struct NotebookTab: View {
         } else {
             List {
                 ForEach(store.bookmarks) { bookmark in
-                    Button { open(slug: bookmark.slug) } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "bookmark.fill")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                            Text(bookmark.title)
-                                .font(.headline)
+                    HStack(spacing: 10) {
+                        Button { open(slug: bookmark.slug) } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bookmark.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                Text(bookmark.title)
+                                    .font(.headline)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+
+                        ListenButton(slug: bookmark.slug, title: bookmark.title)
                     }
-                    .buttonStyle(.plain)
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             store.removeBookmark(slug: bookmark.slug)

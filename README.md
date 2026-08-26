@@ -140,24 +140,27 @@ in serif for an encyclopedic feel.
   (or drag along the rail) to change section; tap a sub-section to fly to it.
   Tapping an entry's title opens it in the full reading view; **double-clicking
   the title bookmarks it**, and a small **red bookmark** appears beside it
-  (double-click again to remove it). Typing swaps the columns for live, ranked
+  (double-click again to remove it). The text itself is **freely selectable**,
+  and the edit menu offers **Send to Notebook**. Typing swaps the columns for live, ranked
   full-text results (contributor names are indexed, so you can search by author
   too); clearing the field puts you back where you were reading. The dice opens
   a random article.
 - **Notebook** — a sub-navigation over three kept collections:
   - **Bookmarks** — articles you've saved. **Double-click an entry's title** in
-    the Browse columns to keep it (or long-press any title anywhere in the app
-    for a Bookmark menu); **swipe** to remove. Keyed by slug.
+    the Browse columns or at the head of an article to keep it (or long-press
+    any title anywhere in the app for a Bookmark menu); **swipe** to remove.
+    Each kept entry carries a **Listen** control: it generates an audio version
+    on first use (after confirming the estimated OpenAI cost) and becomes a
+    play/pause button once a recording exists. Keyed by slug.
   - **Notes** — passages you saved with **Send to Notebook** (see Read), each
     linking back to its source article.
   - **Recent** — two sections: **Recent searches** (tap to re-run in Browse) and
     **Recent random** (entries you've opened via the dice), each with its own
     "Clear".
 - **Listen** — a **playlist** of article recordings plus a simple **media
-  player** (play/pause, scrubber, skip). The per-article **Listen** buttons are
-  removed for now, so nothing new is generated; recordings already on the device
-  still play, and the synthesis code (`ListenStore`) is untouched and ready to
-  be wired back up.
+  player** (play/pause, scrubber, skip). Recordings are made from the **Listen**
+  control on each entry in **Notebook › Bookmarks** — the reading views
+  themselves stay free of audio chrome.
 - **Settings** — a sub-navigation:
   - **Appearance** — follow the **System** theme or force **Light** / **Dark**,
     and pick an **article text size**.
@@ -167,7 +170,8 @@ in serif for an encyclopedic feel.
 - **Read** — the single-article view, reached from a search hit, a cross
   reference, a byline or an entry title in the columns. Articles render in a
   serif body at your chosen text size, with a volume/page citation, a tappable
-  **contributor byline**, and **See also** cross-reference chips. The body is
+  **contributor byline**, and **See also** cross-reference chips. The headword
+  takes the same **double-click to bookmark** as the columns. The body is
   **freely selectable**: pick any passage and the edit menu offers **Send to
   Notebook** alongside the usual Copy / Look Up / Share. Previous/next
   navigation stays **pinned to the bottom** (in a sans-serif face) while the
@@ -233,6 +237,15 @@ Long jumps are navigation, not scrolling: the A–Z rail and the sub-section
 scrubber at the top of the pane move the reader straight to the column an
 entry begins in, which is what keeps the buffer from ever being outrun.
 
+Body text is drawn by the platform text view (`SelectableArticleText`) rather
+than SwiftUI's `Text`, which is what allows an arbitrary passage to be selected
+and sent to the Notebook — SwiftUI offers no way to add an action to a `Text`
+selection menu. It is handed lines already broken to the column's exact width,
+so it re-wraps nothing. The cost is a text view per block of text on screen;
+titles stay plain `Text`, since a double-click there has to mean *bookmark*
+rather than *select word*. Selection is per block, so a sentence that runs
+across a column break is selected in two pieces.
+
 Column padding is one constant, `ColumnStyle.columnPadding` (50pt on every side
 of a column's text, so the gutter between two columns reads as twice that). It
 is clamped on narrow columns — a third of an iPhone in portrait is only ~130pt
@@ -240,21 +253,19 @@ across — so the text never collapses to a ribbon.
 
 ### Listen (text-to-speech)
 
-> **Currently switched off.** The per-article **Listen** buttons were removed in
-> the column-reader redesign, so nothing new can be generated from the UI right
-> now; everything below still describes `ListenStore`, which is intact, and
-> existing recordings still play from the Listen tab. Restoring the feature
-> means putting the button back on `ArticleView`.
+> **Where it lives.** The reading views carry no audio chrome; recordings are
+> made from the **Listen** control on each entry in **Notebook › Bookmarks**
+> (`ListenButton`), which is also where an existing recording plays from.
 
-The **Listen** button on an article sends its text to OpenAI's
+The **Listen** control sends an entry's text to OpenAI's
 [`/v1/audio/speech`](https://developers.openai.com/api/docs/guides/text-to-speech)
 endpoint (`tts-1`), streams back an mp3, and stores it under
 `Documents/ListenAudio` with its metadata. Long articles are split into several
 requests (a couple of thousand characters each) whose mp3 responses are stitched
 together; each request runs on a long-timeout session and is retried a few times
 on transient failures, so full-length entries no longer time out. **Progress is
-shown live** — an inline bar on the article and a banner in the Listen pane
-report "clip N of M" as the audio is built. Your API key is entered in
+shown live** — a spinner on the entry and a banner in the Listen pane report
+"clip N of M" as the audio is built. Your API key is entered in
 **Settings › Listen** and held in the Keychain — it never leaves the device
 except in the request to OpenAI. Before each request the
 reader is shown the character count and an **estimated cost** (OpenAI's `tts-1`
