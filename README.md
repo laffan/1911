@@ -133,9 +133,10 @@ in serif for an encyclopedic feel.
   **search field** with a **Random dice** beside it, then the **A–Z rail** and
   the **sub-section scrubber** (Aa, Ab, Ac …) as horizontal bars, then the
   reading surface itself. That surface sets the whole letter as **newspaper
-  columns a third of a screen wide that scroll sideways** — each entry opens a
-  fresh column under its own title and its **full text flows on** into the
-  columns that follow, entry after entry, in alphabetical order. Tap a letter
+  columns a third of a screen wide that scroll sideways** — one continuous run
+  of text in alphabetical order, where each entry's **full text flows on** into
+  the columns that follow and the next entry's title falls **wherever the last
+  one left off**, mid-column as often as not. Tap a letter
   (or drag along the rail) to change section; tap a sub-section to fly to it.
   Tapping an entry's title opens it in the full reading view; **double-clicking
   the title bookmarks it**, and a small **red bookmark** appears beside it
@@ -188,7 +189,7 @@ it is simply not surfaced in the reading UI.)
 ### The column reader, and how it stays fast
 
 The corpus runs to tens of thousands of printed pages, so the sideways-scrolling
-Browse surface can never lay all of it out. Four things keep it responsive:
+Browse surface can never lay all of it out. Five things keep it responsive:
 
 1. **The text is broken into lines by hand, not by TextKit.** For each font size
    the app measures the advance width of ~500 characters once
@@ -200,29 +201,42 @@ Browse surface can never lay all of it out. Four things keep it responsive:
    ligatures only ever pull glyphs closer — a line that fits by this measure
    always fits on screen.
 2. **Only counts are kept.** A background pass streams the letter's entries out
-   of SQLite one row at a time (`forEachEntry`), wraps each body, records its
-   line and column counts, and throws the text away. That is a few dozen bytes
-   per entry, so the index for an entire letter costs a few hundred kilobytes —
-   and column positions, once assigned, never move.
-3. **The stream only ever grows at the end.** Entries are published to the
+   of SQLite one row at a time (`forEachEntry`), wraps each body, records how
+   many lines it came to, and throws the text away. That is a handful of
+   integers per entry, so the index for an entire letter costs a few hundred
+   kilobytes — and positions, once assigned, never move.
+3. **Everything sits on one line grid.** The letter is a single unbroken run of
+   *slots*, one slot per line of body text, sliced into columns. Titles are
+   measured in whole slots too, which is what lets an entry begin exactly where
+   the previous one stopped instead of at a column top. The one interruption:
+   a title is never split across a column break, so a heading that wouldn't fit
+   in what's left of a column starts the next one and leaves the remainder
+   blank.
+4. **The stream only ever grows at the end.** Entries are published to the
    reader in small batches, in alphabetical order, so columns appear within a
    frame or two of choosing a letter while measuring continues behind them. New
    entries always land *after* what is already on screen, so nothing shifts
    under your finger; a hairline at the top shows the pass finishing.
-4. **Drawing is virtualized and prefetched.** Columns live in a `LazyHStack` at
+5. **Drawing is virtualized and prefetched.** Columns live in a `LazyHStack` at
    a fixed width, so only the three or four on screen are ever built no matter
    how far the stream runs. Rendering one needs that entry's wrapped lines,
-   which are recomputed on demand, held in a small LRU, and prefetched a few
-   entries ahead of the viewport on a background queue — so a fast flick draws
-   from the cache rather than waiting on it.
+   which are recomputed on demand, held in an LRU budgeted by wrapped lines,
+   and prefetched a few *columns* ahead of the viewport on a background queue
+   (entries would be the wrong unit — a single column can hold a dozen of the
+   short ones) — so a fast flick draws from the cache rather than waiting on it.
 
 Rotating the device or resizing the window changes the column geometry and so
 re-measures the letter; that is debounced until the resize settles, and the
 existing columns stay readable and scrollable meanwhile.
 
 Long jumps are navigation, not scrolling: the A–Z rail and the sub-section
-scrubber at the top of the pane move the reader straight to an entry's first
-column, which is what keeps the buffer from ever being outrun.
+scrubber at the top of the pane move the reader straight to the column an
+entry begins in, which is what keeps the buffer from ever being outrun.
+
+Column padding is one constant, `ColumnStyle.columnPadding` (50pt on every side
+of a column's text, so the gutter between two columns reads as twice that). It
+is clamped on narrow columns — a third of an iPhone in portrait is only ~130pt
+across — so the text never collapses to a ribbon.
 
 ### Listen (text-to-speech)
 

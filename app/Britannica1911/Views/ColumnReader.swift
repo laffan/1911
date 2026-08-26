@@ -1,7 +1,9 @@
 import SwiftUI
 
-/// The Browse reading surface: the whole letter set as a continuous run of
+/// The Browse reading surface: the whole letter set as one continuous run of
 /// newspaper columns, each a third of the screen wide, scrolling sideways.
+/// Text flows from column to column and entry to entry without a break — a new
+/// entry's title falls wherever the previous entry stopped.
 ///
 /// Only the handful of columns actually on screen are ever built — the
 /// `LazyHStack` realizes visible children, and because every column is exactly
@@ -92,18 +94,11 @@ struct ColumnReader: View {
         }
     }
 
-    @ViewBuilder
     private func cell(_ column: Int, style: ColumnStyle) -> some View {
-        if let entryIndex = columns.index.entryIndex(forColumn: column) {
-            let entry = columns.index.entries[entryIndex]
-            ColumnCell(entry: entry,
-                       columnInEntry: column - entry.columnStart,
-                       style: style,
-                       columns: columns,
-                       onOpen: onOpen)
-        } else {
-            Color.clear.frame(width: style.columnWidth, height: style.columnHeight)
-        }
+        ColumnCell(segments: columns.index.segments(forColumn: column),
+                   style: style,
+                   columns: columns,
+                   onOpen: onOpen)
     }
 
     /// A hairline while the letter is still being measured. Columns already
@@ -120,12 +115,13 @@ struct ColumnReader: View {
     // MARK: - Scroll position
 
     private func trackScroll(minX: CGFloat, style: ColumnStyle) {
-        guard style.columnWidth > 0 else { return }
+        guard style.columnWidth > 0, style.linesPerColumn > 0 else { return }
         let leadingColumn = Int(max(0, -minX) / style.columnWidth)
-        guard let entryIndex = columns.index.entryIndex(forColumn: leadingColumn) else { return }
+        let slot = leadingColumn * style.linesPerColumn
+        guard let entryIndex = columns.index.entryIndex(atSlot: slot) else { return }
         guard entryIndex != visibleEntry else { return }
         visibleEntry = entryIndex
-        columns.prefetch(entriesAround: entryIndex)
+        columns.prefetch(fromEntry: entryIndex)
     }
 
     /// Coming back from a search (or any other time the stream is rebuilt),
@@ -137,11 +133,11 @@ struct ColumnReader: View {
 
     private func honourPendingJump(_ proxy: ScrollViewProxy) {
         guard let target = pendingJump else { return }
-        guard let column = columns.index.columnStart(ofEntry: target) else { return }
+        guard let column = columns.index.column(ofEntry: target) else { return }
         pendingJump = nil
         proxy.scrollTo(column, anchor: .leading)
         visibleEntry = target
-        columns.prefetch(entriesAround: target)
+        columns.prefetch(fromEntry: target)
     }
 }
 
@@ -156,15 +152,15 @@ private struct ColumnOffsetKey: PreferenceKey {
 
 // MARK: - One column
 
-/// A single column: an entry's title where the entry begins, then as much of
-/// its text as the column holds, over a running footer.
+/// A single column of the stream: whatever falls inside its slice of the line
+/// grid — the tail of the previous entry, whole short entries, a title, the
+/// opening of the next.
 ///
-/// Every measurement comes from `ColumnStyle`, and the header and text blocks
-/// are given explicit heights, so what is drawn can never disagree with what
-/// was paginated — the next column always resumes exactly where this one stops.
+/// Every block is framed at an exact multiple of the line height, so the grid
+/// stays true down the column and the next column resumes precisely where this
+/// one stops.
 struct ColumnCell: View {
-    let entry: EntryLayout
-    let columnInEntry: Int
+    let segments: [ColumnSegment]
     let style: ColumnStyle
     /// Held as a plain reference, not observed: the cell only asks it for
     /// wrapped text, and re-rendering on every index update would be waste.
@@ -173,16 +169,11 @@ struct ColumnCell: View {
 
     @EnvironmentObject var store: LibraryStore
 
-    private var isOpening: Bool { columnInEntry == 0 }
-
-    private var headerHeight: CGFloat {
-        isOpening ? style.headerHeight(titleLines: entry.titleLines) : 0
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if isOpening { header }
-            bodyText
+            ForEach(segments.indices, id: \.self) { index in
+                segment(segments[index])
+            }
             Spacer(minLength: 0)
             footer
         }
@@ -194,13 +185,30 @@ struct ColumnCell: View {
             Rectangle()
                 .fill(Color.secondary.opacity(0.2))
                 .frame(width: 0.5)
-                .padding(.vertical, 8)
+                .padding(.vertical, style.topInset)
         }
     }
 
-    // MARK: Header
+    @ViewBuilder
+    private func segment(_ segment: ColumnSegment) -> some View {
+        switch segment {
+        case .gap(let slots):
+            Color.clear
+                .frame(width: style.textWidth, height: CGFloat(slots) * style.lineHeight)
+        case .title(let entry, let atColumnTop):
+            titleBlock(entry, atColumnTop: atColumnTop)
+        case .body(let entry, let lines):
+            bodyBlock(entry, lines: lines)
+        }
+    }
 
-    private var header: some View {
+    // MARK: Title
+
+    /// The entry's headword. When the title has been carried down to the top of
+    /// a column there is no preceding text to separate it from, so the space
+    /// above it is dropped — the block keeps its height either way, which is
+    /// what holds the line grid together.
+    private func titleBlock(_ entry: EntryLayout, atColumnTop: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(entry.title)
                 .font(.system(size: style.titleFontSize, weight: .bold, design: .serif))
@@ -213,7 +221,10 @@ struct ColumnCell: View {
                     .accessibilityLabel("Bookmarked")
             }
         }
-        .frame(width: style.textWidth, height: headerHeight, alignment: .topLeading)
+        .padding(.top, atColumnTop ? 0 : style.titleSpaceAbove)
+        .frame(width: style.textWidth,
+               height: CGFloat(entry.titleSlots) * style.lineHeight,
+               alignment: .topLeading)
         .clipped()
         .contentShape(Rectangle())
         // Double-click / double-tap keeps the entry; tapping once opens it in
@@ -228,16 +239,17 @@ struct ColumnCell: View {
 
     // MARK: Body
 
-    private var bodyText: some View {
-        let lines = columns.lines(for: entry)
-        let range = style.lineRange(for: entry, column: columnInEntry)
-        let upper = min(range.upperBound, lines.count)
+    private func bodyBlock(_ entry: EntryLayout, lines range: Range<Int>) -> some View {
+        let wrapped = columns.lines(for: entry)
+        let upper = min(range.upperBound, wrapped.count)
         let lower = min(range.lowerBound, upper)
-        return Text(TextColumnizer.render(lines[lower..<upper]))
+        return Text(TextColumnizer.render(wrapped[lower..<upper]))
             .font(.system(size: style.bodyFontSize, design: .serif))
             .lineSpacing(style.lineSpacing)
+            // Sized from the slots the block was given, not from the lines that
+            // came back, so a short read can never shift what follows it.
             .frame(width: style.textWidth,
-                   height: max(0, style.textHeight - headerHeight),
+                   height: CGFloat(range.count) * style.lineHeight,
                    alignment: .topLeading)
             .clipped()
     }
@@ -258,15 +270,23 @@ struct ColumnCell: View {
         .frame(width: style.textWidth, height: style.footerHeight, alignment: .bottomLeading)
     }
 
-    /// The opening column carries the citation; continuations carry a running
-    /// head, so it stays obvious what is being read during a fast scroll.
+    /// A column that opens an entry carries its citation; one that carries text
+    /// over from an earlier column gets a running head instead, so it stays
+    /// obvious what is being read during a fast scroll.
     private var footerText: String {
-        if isOpening {
-            var parts: [String] = []
-            if let volume = entry.volume { parts.append("Vol. \(volume)") }
-            if let pages = entry.pages { parts.append("p. \(pages)") }
-            return parts.isEmpty ? "1911 Britannica" : parts.joined(separator: " · ")
+        for segment in segments {
+            switch segment {
+            case .gap:
+                continue
+            case .title(let entry, _):
+                var parts: [String] = []
+                if let volume = entry.volume { parts.append("Vol. \(volume)") }
+                if let pages = entry.pages { parts.append("p. \(pages)") }
+                return parts.isEmpty ? "1911 Britannica" : parts.joined(separator: " · ")
+            case .body(let entry, _):
+                return entry.title.uppercased()
+            }
         }
-        return "\(entry.title.uppercased()) · \(columnInEntry + 1)"
+        return ""
     }
 }

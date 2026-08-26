@@ -55,7 +55,7 @@ final class ColumnIndexStore: ObservableObject {
     private let prefetchDatabase = try? Database()
     private let renderDatabase = try? Database()
 
-    private let cache = WrappedLineCache(limit: 32)
+    private let cache = WrappedLineCache(lineBudget: 30_000)
     /// Entries whose lines are already queued for prefetch, so a burst of
     /// scroll events doesn't schedule the same work repeatedly.
     private var prefetching: Set<Int64> = []
@@ -65,6 +65,9 @@ final class ColumnIndexStore: ObservableObject {
     /// only a few dozen published updates.
     private let batchSize = 96
     private let batchInterval: TimeInterval = 0.1
+    /// Ceiling on entries queued by one prefetch pass, so a run of very short
+    /// entries cannot flood the queue.
+    private let maxPrefetchPerPass = 48
 
     // MARK: - Configuration
 
@@ -107,7 +110,7 @@ final class ColumnIndexStore: ObservableObject {
         let style = ColumnStyle(width: styleKey.width, height: styleKey.height, fontSize: styleKey.fontSize)
         self.style = style
         self.expectedEntries = max(expectedEntries, 1)
-        index = ColumnIndex(letter: letter, styleKey: styleKey)
+        index = ColumnIndex(letter: letter, styleKey: styleKey, linesPerColumn: style.linesPerColumn)
         // An empty letter has nothing to measure, so it is already "done".
         progress = expectedEntries == 0 ? 1 : 0
 
@@ -143,8 +146,6 @@ final class ColumnIndexStore: ObservableObject {
     private static func layout(for row: ArticleTextRow, style: ColumnStyle) -> EntryLayout {
         let body = ArticleText.stripHeadword(row.body, title: row.title)
         let titleLines = style.titleLines(row.title)
-        let firstColumnLines = style.firstColumnLines(titleLines: titleLines)
-        let bodyLines = style.bodyLineCount(body)
         return EntryLayout(
             id: row.id,
             slug: row.slug,
@@ -152,9 +153,8 @@ final class ColumnIndexStore: ObservableObject {
             volume: row.volume,
             pages: row.pages,
             titleLines: titleLines,
-            bodyLines: bodyLines,
-            firstColumnLines: firstColumnLines,
-            columnCount: style.columnCount(bodyLines: bodyLines, firstColumnLines: firstColumnLines)
+            titleSlots: style.titleSlots(titleLines: titleLines),
+            bodyLines: style.bodyLineCount(body)
         )
     }
 
@@ -179,16 +179,21 @@ final class ColumnIndexStore: ObservableObject {
         return lines
     }
 
-    /// Warm the cache for the entries just outside the viewport, so scrolling
-    /// into them costs nothing on the main thread.
-    func prefetch(entriesAround entryIndex: Int, ahead: Int = 3, behind: Int = 1) {
-        guard let style else { return }
-        let lower = max(0, entryIndex - behind)
-        let upper = min(index.entries.count - 1, entryIndex + ahead)
-        guard lower <= upper else { return }
+    /// Warm the cache for what is about to scroll into view.
+    ///
+    /// Reach is measured in columns rather than entries: a column of short
+    /// EB1911 entries can hold a dozen of them, so "the next three entries"
+    /// would not even cover the screen.
+    func prefetch(fromEntry entryIndex: Int, columnsAhead: Int = 4, entriesBehind: Int = 2) {
+        guard let style, style.linesPerColumn > 0, !index.entries.isEmpty else { return }
+        let lower = max(0, min(entryIndex - entriesBehind, index.entries.count - 1))
+        let reach = index.entries[lower].startSlot + columnsAhead * style.linesPerColumn
+        var scheduled = 0
 
-        for i in lower...upper {
+        for i in lower..<index.entries.count {
             let entry = index.entries[i]
+            if entry.startSlot > reach || scheduled >= maxPrefetchPerPass { break }
+            scheduled += 1
             if cache.contains(entry.id) || prefetching.contains(entry.id) { continue }
             prefetching.insert(entry.id)
             prefetchQueue.async { [weak self] in
@@ -230,17 +235,20 @@ final class WrappedLineCache {
     private let lock = NSLock()
     private var storage: [Int64: [TextLine]] = [:]
     private var order: [Int64] = []
-    private let limit: Int
+    private var cachedLines = 0
+    /// Budgeted in wrapped lines rather than entries: one column may hold a
+    /// dozen one-line entries or a slice of a single enormous one.
+    private let lineBudget: Int
 
-    init(limit: Int) {
-        self.limit = max(1, limit)
+    init(lineBudget: Int) {
+        self.lineBudget = max(1, lineBudget)
     }
 
     func lines(for id: Int64) -> [TextLine]? {
         lock.lock(); defer { lock.unlock() }
-        guard let lines = storage[id] else { return nil }
+        guard let wrapped = storage[id] else { return nil }
         touch(id)
-        return lines
+        return wrapped
     }
 
     func contains(_ id: Int64) -> Bool {
@@ -248,13 +256,15 @@ final class WrappedLineCache {
         return storage[id] != nil
     }
 
-    func store(_ lines: [TextLine], for id: Int64) {
+    func store(_ wrapped: [TextLine], for id: Int64) {
         lock.lock(); defer { lock.unlock() }
-        storage[id] = lines
+        if let existing = storage[id] { cachedLines -= existing.count }
+        storage[id] = wrapped
+        cachedLines += wrapped.count
         touch(id)
-        while order.count > limit, let oldest = order.first {
+        while cachedLines > lineBudget, order.count > 1, let oldest = order.first {
             order.removeFirst()
-            storage.removeValue(forKey: oldest)
+            cachedLines -= storage.removeValue(forKey: oldest)?.count ?? 0
         }
     }
 
@@ -262,6 +272,7 @@ final class WrappedLineCache {
         lock.lock(); defer { lock.unlock() }
         storage.removeAll()
         order.removeAll()
+        cachedLines = 0
     }
 
     /// Move `id` to the most-recently-used end. Caller holds the lock.

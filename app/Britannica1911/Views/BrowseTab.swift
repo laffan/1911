@@ -233,6 +233,7 @@ struct LetterBar: View {
         }
         .frame(height: 26)
         .padding(.horizontal, 8)
+        .padding(.top, 20)
     }
 
     private func letter(at x: CGFloat, width: CGFloat) -> String? {

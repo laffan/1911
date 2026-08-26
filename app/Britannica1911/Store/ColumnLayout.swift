@@ -279,6 +279,13 @@ struct ColumnStyleKey: Equatable {
 struct ColumnStyle {
     /// Columns visible at once: the redesign shows thirds of the screen.
     static let columnsPerScreen: CGFloat = 3
+    /// Breathing room around a column's text on every side. The gutter between
+    /// two columns therefore reads as twice this.
+    static let columnPadding: CGFloat = 50
+    /// Floors that keep the padding from swallowing a narrow column whole (a
+    /// third of an iPhone in portrait is only ~130pt across).
+    private static let minimumTextWidth: CGFloat = 96
+    private static let minimumTextHeight: CGFloat = 140
     /// Trim a sliver of the column height before counting lines, so that any
     /// small disagreement between measured and rendered line heights can never
     /// push the last line out of view.
@@ -301,7 +308,11 @@ struct ColumnStyle {
     let topInset: CGFloat
     let bottomInset: CGFloat
     let footerHeight: CGFloat
-    let headerGap: CGFloat
+    /// Space set above an entry's title, separating it from the entry that ran
+    /// into it. Suppressed when the title happens to land at a column's top.
+    let titleSpaceAbove: CGFloat
+    /// Space between an entry's title and its opening line.
+    let titleSpaceBelow: CGFloat
     let maxTitleLines: Int
     /// Room kept beside a title for the bookmark badge, so a bookmarked entry
     /// never re-wraps its title into an extra line.
@@ -313,10 +324,6 @@ struct ColumnStyle {
     init(width: CGFloat, height: CGFloat, fontSize: CGFloat) {
         key = ColumnStyleKey(width: width, height: height, fontSize: fontSize)
 
-        horizontalInset = 12
-        topInset = 10
-        bottomInset = 8
-        headerGap = 10
         maxTitleLines = 4
         titleBadgeWidth = 20
         lineSpacing = 3
@@ -325,6 +332,14 @@ struct ColumnStyle {
 
         columnWidth = max(80, width / Self.columnsPerScreen)
         columnHeight = max(80, height)
+
+        horizontalInset = min(Self.columnPadding,
+                              max(0, (columnWidth - Self.minimumTextWidth) / 2))
+        let verticalInset = min(Self.columnPadding,
+                                max(0, (columnHeight - footerHeight - Self.minimumTextHeight) / 2))
+        topInset = verticalInset
+        bottomInset = verticalInset
+
         textWidth = max(24, columnWidth - horizontalInset * 2)
         textHeight = max(lineSpacing, columnHeight - topInset - bottomInset - footerHeight)
 
@@ -339,6 +354,8 @@ struct ColumnStyle {
         bodyWidths = GlyphWidths.table(size: bodyFontSize, bold: false)
         titleWidths = GlyphWidths.table(size: titleFontSize, bold: true)
         paragraphIndent = bodyWidths.advance(TextColumnizer.indentCharacter)
+        titleSpaceAbove = (lineHeight * 0.6).rounded()
+        titleSpaceBelow = (lineHeight * 0.3).rounded()
 
         linesPerColumn = Self.lineCapacity(height: textHeight,
                                            lineHeight: lineHeight,
@@ -364,36 +381,19 @@ struct ColumnStyle {
         return min(max(1, count), maxTitleLines)
     }
 
-    func headerHeight(titleLines: Int) -> CGFloat {
-        CGFloat(titleLines) * titleLineHeight + headerGap
-    }
-
-    /// Lines of body text that fit in an entry's opening column, under its title.
-    func firstColumnLines(titleLines: Int) -> Int {
-        let available = textHeight - headerHeight(titleLines: titleLines)
-        guard available > 0 else { return 0 }
-        return Self.lineCapacity(height: available,
-                                 lineHeight: lineHeight,
-                                 lineSpacing: lineSpacing,
-                                 minimum: 0)
-    }
-
-    /// Columns an entry occupies: its opening column plus however many more
-    /// the remaining lines need.
-    func columnCount(bodyLines: Int, firstColumnLines: Int) -> Int {
-        let remaining = max(0, bodyLines - firstColumnLines)
-        guard remaining > 0 else { return 1 }
-        return 1 + (remaining + linesPerColumn - 1) / linesPerColumn
-    }
-
-    /// Which of an entry's wrapped lines belong in one of its columns.
-    func lineRange(for entry: EntryLayout, column: Int) -> Range<Int> {
-        if column <= 0 {
-            return 0..<min(entry.firstColumnLines, entry.bodyLines)
-        }
-        let start = entry.firstColumnLines + (column - 1) * linesPerColumn
-        guard start < entry.bodyLines else { return 0..<0 }
-        return start..<min(start + linesPerColumn, entry.bodyLines)
+    /// How many line slots an entry's title block takes up.
+    ///
+    /// Titles are measured in whole lines of body text so that everything —
+    /// headings included — sits on one grid, which is what lets an entry pick
+    /// up exactly where the last one stopped.
+    func titleSlots(titleLines: Int) -> Int {
+        let height = titleSpaceAbove + CGFloat(titleLines) * titleLineHeight + titleSpaceBelow
+        let slots = max(1, Int((height / lineHeight).rounded(.up)))
+        // Never let a heading outgrow a column: on a short column with a long
+        // headword it would otherwise spill past the bottom, and no amount of
+        // carrying it down would help. Capped, it is clipped instead, and the
+        // rule that a title always fits in what follows it stays true.
+        return min(slots, max(1, linesPerColumn - 1))
     }
 
     func lines(forBody body: String) -> [TextLine] {
@@ -407,9 +407,14 @@ struct ColumnStyle {
 
 // MARK: - The index
 
-/// One entry's place in the column stream. Just 60-odd bytes per article, so a
-/// whole letter of the encyclopaedia costs a few hundred kilobytes to index —
-/// the body text itself is read, measured and thrown away.
+/// One entry's place in the column stream. Just a handful of integers per
+/// article, so a whole letter of the encyclopaedia costs a few hundred
+/// kilobytes to index — the body text itself is read, measured and discarded.
+///
+/// Everything is expressed in *slots*: one slot is one line of body text, and
+/// the letter is a single unbroken run of them, sliced into columns. An entry's
+/// title takes a whole number of slots, and its body follows immediately, so
+/// entries start wherever the previous one stopped rather than at a column top.
 struct EntryLayout: Identifiable, Hashable {
     let id: Int64
     let slug: String
@@ -417,62 +422,140 @@ struct EntryLayout: Identifiable, Hashable {
     let volume: String?
     let pages: String?
     let titleLines: Int
+    let titleSlots: Int
     let bodyLines: Int
-    let firstColumnLines: Int
-    let columnCount: Int
-    /// Index of this entry's first column within the letter.
-    var columnStart: Int = 0
+    /// First slot of this entry's title, assigned when it joins the index.
+    var startSlot: Int = 0
 
-    var columnEnd: Int { columnStart + columnCount }
+    /// First slot of the entry's body, i.e. just past its title block.
+    var bodyStartSlot: Int { startSlot + titleSlots }
+    var endSlot: Int { startSlot + titleSlots + bodyLines }
+}
+
+/// What one column has to draw, top to bottom. A column may hold the tail of
+/// one entry, then several whole short entries, then the opening of another.
+enum ColumnSegment {
+    /// Blank slots, left when a title was moved down to avoid splitting it.
+    case gap(slots: Int)
+    case title(EntryLayout, atColumnTop: Bool)
+    case body(EntryLayout, lines: Range<Int>)
 }
 
 /// The paginated stream for one letter: entries in browse order, each knowing
-/// where its columns begin.
+/// which slot it starts on.
 struct ColumnIndex {
     let letter: String
     let styleKey: ColumnStyleKey
+    let linesPerColumn: Int
     private(set) var entries: [EntryLayout] = []
-    private(set) var totalColumns: Int = 0
+    private(set) var totalSlots: Int = 0
     var isComplete: Bool = false
 
-    init(letter: String = "", styleKey: ColumnStyleKey = ColumnStyleKey(width: 0, height: 0, fontSize: 0)) {
+    init(letter: String = "",
+         styleKey: ColumnStyleKey = ColumnStyleKey(width: 0, height: 0, fontSize: 0),
+         linesPerColumn: Int = 0) {
         self.letter = letter
         self.styleKey = styleKey
+        self.linesPerColumn = linesPerColumn
     }
 
     var isEmpty: Bool { entries.isEmpty }
 
+    var totalColumns: Int {
+        guard linesPerColumn > 0 else { return 0 }
+        return (totalSlots + linesPerColumn - 1) / linesPerColumn
+    }
+
+    /// Place a freshly measured batch at the end of the stream.
+    ///
+    /// The one thing that interrupts the flow: a title is never split across a
+    /// column break, so an entry whose heading (plus its first line) would not
+    /// fit in what's left of a column starts the next one instead, leaving the
+    /// remaining slots blank. Positions, once assigned, never move.
     mutating func append(_ batch: [EntryLayout]) {
+        guard linesPerColumn > 0 else { return }
         entries.reserveCapacity(entries.count + batch.count)
         for var entry in batch {
-            entry.columnStart = totalColumns
-            totalColumns += entry.columnCount
+            let offset = totalSlots % linesPerColumn
+            let remaining = linesPerColumn - offset
+            let needed = entry.titleSlots + min(1, entry.bodyLines)
+            if offset != 0, needed > remaining { totalSlots += remaining }
+            entry.startSlot = totalSlots
+            totalSlots = entry.endSlot
             entries.append(entry)
         }
     }
 
-    /// The entry a global column belongs to, by binary search over the running
-    /// column totals.
-    func entryIndex(forColumn column: Int) -> Int? {
-        guard column >= 0, column < totalColumns else { return nil }
+    /// The entry occupying `slot` — the one being read there.
+    func entryIndex(atSlot slot: Int) -> Int? {
+        guard !entries.isEmpty else { return nil }
         var low = 0
         var high = entries.count - 1
+        var best: Int?
         while low <= high {
             let mid = (low + high) / 2
-            let entry = entries[mid]
-            if column < entry.columnStart {
-                high = mid - 1
-            } else if column >= entry.columnEnd {
+            if entries[mid].startSlot <= slot {
+                best = mid
                 low = mid + 1
             } else {
-                return mid
+                high = mid - 1
             }
         }
-        return nil
+        return best
     }
 
-    func columnStart(ofEntry index: Int) -> Int? {
-        guard entries.indices.contains(index) else { return nil }
-        return entries[index].columnStart
+    /// The column an entry's title begins in.
+    func column(ofEntry index: Int) -> Int? {
+        guard linesPerColumn > 0, entries.indices.contains(index) else { return nil }
+        return entries[index].startSlot / linesPerColumn
+    }
+
+    /// Everything that falls inside one column, in drawing order.
+    func segments(forColumn column: Int) -> [ColumnSegment] {
+        guard linesPerColumn > 0 else { return [] }
+        let lower = column * linesPerColumn
+        let upper = lower + linesPerColumn
+        guard var i = firstEntry(endingAfter: lower) else { return [] }
+
+        var segments: [ColumnSegment] = []
+        var cursor = lower
+
+        while i < entries.count, entries[i].startSlot < upper {
+            let entry = entries[i]
+
+            if entry.startSlot >= lower {
+                if entry.startSlot > cursor {
+                    segments.append(.gap(slots: entry.startSlot - cursor))
+                }
+                segments.append(.title(entry, atColumnTop: entry.startSlot == lower))
+                cursor = min(entry.bodyStartSlot, upper)
+            } else if entry.bodyStartSlot > lower {
+                // A title taller than a whole column, spilling into this one.
+                cursor = min(entry.bodyStartSlot, upper)
+                segments.append(.gap(slots: cursor - lower))
+            }
+
+            let bodyStart = max(entry.bodyStartSlot, lower)
+            let bodyEnd = min(entry.endSlot, upper)
+            if bodyEnd > bodyStart {
+                if bodyStart > cursor { segments.append(.gap(slots: bodyStart - cursor)) }
+                segments.append(.body(entry,
+                                      lines: (bodyStart - entry.bodyStartSlot)..<(bodyEnd - entry.bodyStartSlot)))
+                cursor = bodyEnd
+            }
+            i += 1
+        }
+        return segments
+    }
+
+    /// Index of the first entry with anything left to draw at or after `slot`.
+    private func firstEntry(endingAfter slot: Int) -> Int? {
+        var low = 0
+        var high = entries.count
+        while low < high {
+            let mid = (low + high) / 2
+            if entries[mid].endSlot > slot { high = mid } else { low = mid + 1 }
+        }
+        return low < entries.count ? low : nil
     }
 }
