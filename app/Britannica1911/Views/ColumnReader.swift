@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The Browse reading surface: the whole letter set as one continuous run of
-/// newspaper columns, each a third of the screen wide, scrolling sideways.
+/// newspaper columns scrolling sideways — a third of the screen wide on an
+/// iPad or a Mac, four-fifths of it on an iPhone (see `ColumnMetrics`).
 /// Text flows from column to column and entry to entry without a break — a new
 /// entry's title falls wherever the previous entry stopped.
 ///
@@ -29,11 +30,29 @@ struct ColumnReader: View {
     @State var pendingJump: Int?
     @State var showNoteSaved = false
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
+
+    /// A phone reads four-fifths of the screen at a time; everything wider
+    /// keeps the three-column page. Part of the style key, so moving between
+    /// the two (rotation, an iPad split view) re-measures the letter.
+    private var metrics: ColumnMetrics {
+        #if os(iOS)
+        return hSizeClass == .compact ? .phone : .wide
+        #else
+        return .wide
+        #endif
+    }
+
     private static let scrollSpace = "columnReaderScroll"
 
     var body: some View {
         GeometryReader { geo in
-            let key = ColumnStyleKey(width: geo.size.width, height: geo.size.height, fontSize: fontSize)
+            let key = ColumnStyleKey(width: geo.size.width,
+                                     height: geo.size.height,
+                                     fontSize: fontSize,
+                                     metrics: metrics)
             content()
                 .onAppear { columns.configure(letter: letter, styleKey: key, expectedEntries: entryCount) }
                 .onChange(of: key) { columns.configure(letter: letter, styleKey: $0, expectedEntries: entryCount) }
@@ -70,10 +89,10 @@ struct ColumnReader: View {
                     }
                 }
                 .background(
-                    GeometryReader { metrics in
+                    GeometryReader { stackGeo in
                         Color.clear.preference(
                             key: ColumnOffsetKey.self,
-                            value: metrics.frame(in: .named(Self.scrollSpace)).minX
+                            value: stackGeo.frame(in: .named(Self.scrollSpace)).minX
                         )
                     }
                 )

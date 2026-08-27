@@ -39,7 +39,8 @@ app/
     Models/Article.swift            Value types (articles, notes, …)
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
-    Store/ColumnLayout.swift        Column geometry, glyph metrics, line breaking
+    Store/ColumnLayout.swift        Column geometry (per-device proportions),
+                                    glyph metrics, line breaking
     Store/ColumnIndexStore.swift    Background pagination of a letter into columns
     Store/SettingsStore.swift       Appearance, font size, OpenAI credentials (Keychain)
     Store/ListenStore.swift         TTS synthesis + audio playlist / media player
@@ -133,11 +134,16 @@ in serif for an encyclopedic feel.
   **search field** with a **Random dice** beside it, then the **A–Z rail** and
   the **sub-section scrubber** (Aa, Ab, Ac …) as horizontal bars, then the
   reading surface itself. That surface sets the whole letter as **newspaper
-  columns a third of a screen wide that scroll sideways** — one continuous run
+  columns that scroll sideways** — a **third of a screen wide** on an iPad or a
+  Mac, **four-fifths of it on an iPhone**, where thirds would be ribbons a few
+  words across (see *Phone proportions* below). It is one continuous run
   of text in alphabetical order, where each entry's **full text flows on** into
   the columns that follow and the next entry's title falls **wherever the last
-  one left off**, mid-column as often as not. Tap a letter
-  (or drag along the rail) to change section; tap a sub-section to fly to it.
+  one left off**, mid-column as often as not. Tap a letter to change section;
+  tap a sub-section to fly to it. On an iPad or a Mac the alphabet is spread
+  across the pane and can be **dragged along like a scrubber**; on an iPhone
+  there is no room for twenty-six letters at a readable size, so **both bars
+  scroll sideways** instead, each keeping where you are in view.
   Tapping an entry's title opens it in the full reading view; **double-clicking
   the title bookmarks it**, and a small **red bookmark** appears beside it
   (double-click again to remove it). The text itself is **freely selectable**,
@@ -222,8 +228,8 @@ Browse surface can never lay all of it out. Five things keep it responsive:
    entries always land *after* what is already on screen, so nothing shifts
    under your finger; a hairline at the top shows the pass finishing.
 5. **Drawing is virtualized and prefetched.** Columns live in a `LazyHStack` at
-   a fixed width, so only the three or four on screen are ever built no matter
-   how far the stream runs. Rendering one needs that entry's wrapped lines,
+   a fixed width, so only the handful actually on screen are ever built no
+   matter how far the stream runs. Rendering one needs that entry's wrapped lines,
    which are recomputed on demand, held in an LRU budgeted by wrapped lines,
    and prefetched a few *columns* ahead of the viewport on a background queue
    (entries would be the wrong unit — a single column can hold a dozen of the
@@ -246,10 +252,32 @@ titles stay plain `Text`, since a double-click there has to mean *bookmark*
 rather than *select word*. Selection is per block, so a sentence that runs
 across a column break is selected in two pieces.
 
-Column padding is one constant, `ColumnStyle.columnPadding` (50pt on every side
-of a column's text, so the gutter between two columns reads as twice that). It
-is clamped on narrow columns — a third of an iPhone in portrait is only ~130pt
-across — so the text never collapses to a ribbon.
+#### Phone proportions
+
+A third of an iPad is a newspaper column; a third of an iPhone is a ribbon
+~130pt across, which at reading size carries four or five words to the line.
+So the page is proportioned per device by one small type, `ColumnMetrics`
+(`.wide` for iPad, Mac and any regular-width window; `.phone` for a
+compact-width pane), which is part of the style key — moving between the two,
+by rotation or an iPad split view, re-measures the letter like any other
+geometry change. It sets four things:
+
+| | `.wide` | `.phone` |
+|---|---|---|
+| column width | ⅓ of the pane | ⅘ of the pane |
+| max column width | — | 420pt |
+| padding around the text | 50pt | 24pt |
+| body type | as chosen in Settings | ×0.85 |
+
+Padding is on every side of a column's text, so the gutter between two columns
+reads as twice it, and it is clamped on a narrow column so the text can never
+collapse to a ribbon. The ceiling on the phone's column width matters in
+landscape, where four-fifths of the screen would otherwise be 600pt+ of prose
+to a line; past it the slice stops growing and simply yields more columns per
+screen. The ×0.85 on the article text size applies to the columns only (the
+single-article view is unchanged) — one line of prose on a phone then carries a
+phrase rather than a word or two. It is the knob to turn if the phone type
+wants resizing.
 
 ### Listen (text-to-speech)
 

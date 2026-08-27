@@ -107,7 +107,7 @@ final class ColumnIndexStore: ObservableObject {
         cache.removeAll()
         prefetching.removeAll()
 
-        let style = ColumnStyle(width: styleKey.width, height: styleKey.height, fontSize: styleKey.fontSize)
+        let style = ColumnStyle(key: styleKey)
         self.style = style
         self.expectedEntries = max(expectedEntries, 1)
         index = ColumnIndex(letter: letter, styleKey: styleKey, linesPerColumn: style.linesPerColumn)

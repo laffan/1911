@@ -263,12 +263,66 @@ enum TextColumnizer {
 
 // MARK: - Column geometry
 
+/// How a column is proportioned for the pane it is being read in.
+///
+/// A third of an iPad is a newspaper column; a third of an iPhone is a ribbon
+/// ~130pt across, which at reading size leaves four or five words to the line.
+/// A compact pane therefore reads **four-fifths of the screen** at a time,
+/// with tighter margins and slightly smaller type — the same page, set for a
+/// smaller sheet.
+enum ColumnMetrics: Equatable {
+    /// iPad, Mac, and any regular-width window: three columns to a screen.
+    case wide
+    /// Compact-width iOS, i.e. the iPhone.
+    case phone
+
+    /// Fraction of the reader's width one column occupies.
+    var columnFraction: CGFloat {
+        switch self {
+        case .wide:  return 1.0 / 3.0
+        case .phone: return 4.0 / 5.0
+        }
+    }
+
+    /// Ceiling on a column's width. Four-fifths of an iPhone *in landscape*
+    /// would be 600pt+ of prose to a line, so the phone's slice stops growing
+    /// there and simply yields more columns per screen instead.
+    var maximumColumnWidth: CGFloat {
+        switch self {
+        case .wide:  return .greatestFiniteMagnitude
+        case .phone: return 420
+        }
+    }
+
+    /// Breathing room around a column's text on every side. The gutter between
+    /// two columns therefore reads as twice this. A phone column cannot spare
+    /// the tablet's margins and still hold a sensible measure.
+    var padding: CGFloat {
+        switch self {
+        case .wide:  return 50
+        case .phone: return 24
+        }
+    }
+
+    /// Multiplier on the reader's chosen article text size. Phone columns are
+    /// set a step smaller so a line still carries a phrase rather than a word
+    /// or two; the single knob to turn if the phone type wants resizing.
+    var fontScale: CGFloat {
+        switch self {
+        case .wide:  return 1
+        case .phone: return 0.85
+        }
+    }
+}
+
 /// The inputs that determine every measurement below. When this changes
-/// (rotation, window resize, a new article text size) the index is rebuilt.
+/// (rotation, window resize, a new article text size, moving between a compact
+/// and a regular pane) the index is rebuilt.
 struct ColumnStyleKey: Equatable {
     let width: CGFloat
     let height: CGFloat
     let fontSize: CGFloat
+    var metrics: ColumnMetrics = .wide
 }
 
 /// Everything needed to paginate and draw one column: fonts, advance tables
@@ -277,11 +331,6 @@ struct ColumnStyleKey: Equatable {
 /// Building one measures a few hundred glyphs, so it is created only when
 /// `key` changes — never inside a view body.
 struct ColumnStyle {
-    /// Columns visible at once: the redesign shows thirds of the screen.
-    static let columnsPerScreen: CGFloat = 3
-    /// Breathing room around a column's text on every side. The gutter between
-    /// two columns therefore reads as twice this.
-    static let columnPadding: CGFloat = 50
     /// Floors that keep the padding from swallowing a narrow column whole (a
     /// third of an iPhone in portrait is only ~130pt across).
     private static let minimumTextWidth: CGFloat = 96
@@ -292,6 +341,8 @@ struct ColumnStyle {
     private static let heightSafetyFactor: CGFloat = 0.985
 
     let key: ColumnStyleKey
+    /// The proportions this style was built with (see `ColumnMetrics`).
+    let metrics: ColumnMetrics
     let columnWidth: CGFloat
     let columnHeight: CGFloat
     let textWidth: CGFloat
@@ -321,8 +372,10 @@ struct ColumnStyle {
     let bodyWidths: GlyphWidths
     let titleWidths: GlyphWidths
 
-    init(width: CGFloat, height: CGFloat, fontSize: CGFloat) {
-        key = ColumnStyleKey(width: width, height: height, fontSize: fontSize)
+    init(key: ColumnStyleKey) {
+        self.key = key
+        let metrics = key.metrics
+        self.metrics = metrics
 
         maxTitleLines = 4
         titleBadgeWidth = 20
@@ -330,12 +383,12 @@ struct ColumnStyle {
         footerFontSize = 10
         footerHeight = 18
 
-        columnWidth = max(80, width / Self.columnsPerScreen)
-        columnHeight = max(80, height)
+        columnWidth = max(80, min(key.width * metrics.columnFraction, metrics.maximumColumnWidth))
+        columnHeight = max(80, key.height)
 
-        horizontalInset = min(Self.columnPadding,
+        horizontalInset = min(metrics.padding,
                               max(0, (columnWidth - Self.minimumTextWidth) / 2))
-        let verticalInset = min(Self.columnPadding,
+        let verticalInset = min(metrics.padding,
                                 max(0, (columnHeight - footerHeight - Self.minimumTextHeight) / 2))
         topInset = verticalInset
         bottomInset = verticalInset
@@ -343,8 +396,10 @@ struct ColumnStyle {
         textWidth = max(24, columnWidth - horizontalInset * 2)
         textHeight = max(lineSpacing, columnHeight - topInset - bottomInset - footerHeight)
 
-        bodyFontSize = fontSize
-        titleFontSize = (fontSize * 1.25).rounded()
+        // The reader's chosen size, set for this page: full size on a tablet,
+        // a step down on a phone.
+        bodyFontSize = max(11, (key.fontSize * metrics.fontScale).rounded())
+        titleFontSize = (bodyFontSize * 1.25).rounded()
 
         let bodyFont = ReaderFont.serif(size: bodyFontSize)
         let titleFont = ReaderFont.serif(size: titleFontSize, bold: true)

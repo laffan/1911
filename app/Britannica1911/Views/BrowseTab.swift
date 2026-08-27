@@ -5,7 +5,9 @@ import SwiftUI
 /// Layout, top to bottom: a **search field** with the Random dice, the **A–Z
 /// rail** and the **sub-section scrubber** (Aa, Ab, Ac …) as horizontal bars
 /// beneath it, and then the reading surface — the whole letter set as columns
-/// a third of a screen wide that scroll sideways (`ColumnReader`).
+/// that scroll sideways (`ColumnReader`), a third of a screen wide on an iPad
+/// or a Mac and four-fifths of it on an iPhone. On a phone both bars scroll
+/// sideways too; there is no room across a phone to fit either of them.
 ///
 /// Typing swaps the columns for ranked full-text results; clearing the field
 /// brings the reading columns back exactly where they were.
@@ -22,6 +24,21 @@ struct BrowseTab: View {
     @State private var visibleEntry = 0
     @State private var jumpTarget: Int?
     @FocusState private var searchFocused: Bool
+
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
+
+    /// The iPhone (and any compact-width pane). There is no room across a
+    /// phone to lay out twenty-six letters, let alone the sub-sections, so
+    /// both bars scroll sideways there instead of being squeezed to fit.
+    private var isCompact: Bool {
+        #if os(iOS)
+        return hSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
 
     private var isSearching: Bool {
         !store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -41,9 +58,15 @@ struct BrowseTab: View {
                 if isSearching {
                     searchResults
                 } else {
-                    LetterBar(letters: store.letters, selected: selectedLetter, onSelect: select(letter:))
+                    LetterBar(letters: store.letters,
+                              selected: selectedLetter,
+                              scrolls: isCompact,
+                              onSelect: select(letter:))
                     if !groups.isEmpty {
-                        GroupBar(groups: groups, activeKey: activeGroupKey, onSelect: jump(toGroup:))
+                        GroupBar(groups: groups,
+                                 activeKey: activeGroupKey,
+                                 roomy: isCompact,
+                                 onSelect: jump(toGroup:))
                     }
                     Divider()
                     ColumnReader(columns: columns,
@@ -193,15 +216,24 @@ struct BrowseGroup: Identifiable, Hashable {
 
 // MARK: - A–Z rail
 
-/// The alphabet, laid across the top of the pane. Tap a letter, or drag along
-/// the rail to scrub through it.
+/// The alphabet, laid across the top of the pane.
 ///
-/// A scrub highlights letters as your finger passes but only *commits* on
-/// release: changing letter re-measures a whole section of the encyclopaedia,
-/// which is not something to do twenty-six times on the way past.
+/// Two shapes, because the two devices have very different room for it:
+///
+/// * **Regular width** (iPad, Mac) — the whole alphabet fits across the pane,
+///   so it is spread edge to edge and can be *scrubbed*: a drag highlights
+///   letters as your finger passes but only **commits on release**, since
+///   changing letter re-measures a whole section of the encyclopaedia, which
+///   is not something to do twenty-six times on the way past.
+/// * **Compact width** (iPhone) — twenty-six letters across a phone leaves
+///   about fourteen points each, so the rail **scrolls sideways** at a
+///   readable size instead, keeping the current letter in view. Scrubbing is
+///   dropped there: a drag has to belong to the scroll view.
 struct LetterBar: View {
     let letters: [String]
     let selected: String
+    /// Scroll the rail rather than squeezing the alphabet into the pane.
+    var scrolls: Bool = false
     let onSelect: (String) -> Void
 
     @State var preview: String?
@@ -209,6 +241,53 @@ struct LetterBar: View {
     private var highlighted: String { preview ?? selected }
 
     var body: some View {
+        Group {
+            if scrolls { scrollingRail } else { fittedRail }
+        }
+        .frame(height: 26)
+        .padding(.horizontal, 8)
+        .padding(.top, 20)
+    }
+
+    // MARK: Compact — a rail that scrolls
+
+    private var scrollingRail: some View {
+        GeometryReader { geo in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) {
+                        ForEach(letters, id: \.self) { letter in
+                            Button { onSelect(letter) } label: {
+                                letterLabel(letter)
+                            }
+                            .buttonStyle(.plain)
+                            .id(letter)
+                        }
+                    }
+                    // Centred when the alphabet happens to fit; scrolling when
+                    // it doesn't, exactly as the sub-section bar below behaves.
+                    .frame(minWidth: geo.size.width)
+                }
+                .onAppear { proxy.scrollTo(selected, anchor: .center) }
+                .onChange(of: selected) { letter in
+                    withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(letter, anchor: .center) }
+                }
+            }
+        }
+    }
+
+    private func letterLabel(_ letter: String) -> some View {
+        Text(letter)
+            .font(.subheadline)
+            .fontWeight(letter == selected ? .bold : .regular)
+            .foregroundStyle(letter == selected ? Color.accentColor : .secondary)
+            .frame(minWidth: 30, minHeight: 26)
+            .contentShape(Rectangle())
+    }
+
+    // MARK: Regular — the whole alphabet, scrubbable
+
+    private var fittedRail: some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
                 ForEach(letters, id: \.self) { letter in
@@ -231,9 +310,6 @@ struct LetterBar: View {
                     }
             )
         }
-        .frame(height: 26)
-        .padding(.horizontal, 8)
-        .padding(.top, 20)
     }
 
     private func letter(at x: CGFloat, width: CGFloat) -> String? {
@@ -247,10 +323,19 @@ struct LetterBar: View {
 
 /// The two-letter sub-sections of the current letter (Aa, Ab, Ac …). Tapping
 /// one sends the column reader straight to that run of entries.
+///
+/// There are far more of these than there is room for — a busy letter runs to
+/// dozens — so the row scrolls sideways, carrying the section being read along
+/// with it. On a phone the chips are set a size larger, both to be legible and
+/// to give a fingertip something to land on.
 struct GroupBar: View {
     let groups: [BrowseGroup]
     let activeKey: String?
+    /// Larger type and touch targets, for the iPhone.
+    var roomy: Bool = false
     let onSelect: (BrowseGroup) -> Void
+
+    private var height: CGFloat { roomy ? 34 : 30 }
 
     var body: some View {
         // Centred when the sub-sections fit across the pane, scrolling from the
@@ -274,18 +359,18 @@ struct GroupBar: View {
                 }
             }
         }
-        .frame(height: 30)
+        .frame(height: height)
     }
 
     private func chip(_ group: BrowseGroup) -> some View {
         let isActive = group.key == activeKey
         return Button { onSelect(group) } label: {
             Text(group.key)
-                .font(.caption2)
+                .font(roomy ? .footnote : .caption2)
                 .fontWeight(isActive ? .bold : .regular)
                 .foregroundStyle(isActive ? Color.white : Color.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.horizontal, roomy ? 10 : 8)
+                .padding(.vertical, roomy ? 6 : 4)
                 .background(
                     Capsule().fill(isActive ? Color.accentColor : Color.secondary.opacity(0.12))
                 )
