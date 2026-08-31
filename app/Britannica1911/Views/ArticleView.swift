@@ -37,6 +37,12 @@ struct ArticleView: View {
                                    crossReferences: store.crossReferences(for: article.id),
                                    reader: reader,
                                    onSendNote: { sendToNotebook($0, article: article) })
+                    // A new entry is a new surface: this hands paging a fresh
+                    // scroll view rather than one still holding the last
+                    // entry's position, and guarantees the measurement pass
+                    // runs from `onAppear` rather than resting on a change
+                    // being noticed across a rebuilt subtree.
+                    .id(article.id)
             } else {
                 Text("Article not found")
                     .foregroundStyle(.secondary)

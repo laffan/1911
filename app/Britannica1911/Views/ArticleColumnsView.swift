@@ -43,9 +43,11 @@ struct ArticleColumnsView: View {
                                      fontSize: settings.fontSize.pointSize,
                                      metrics: metrics)
             content(paneWidth: geo.size.width)
+                // One view per entry (the caller keys it by article id), so
+                // appearing is the whole of "a new article to measure";
+                // afterwards only the geometry can change under it.
                 .onAppear { configure(key) }
                 .onChange(of: key) { configure($0) }
-                .onChange(of: article.id) { _ in configure(key) }
         }
     }
 
@@ -92,11 +94,14 @@ struct ArticleColumnsView: View {
             }
             // Paging to a neighbour, and stepping through find matches, both
             // arrive here as a column to move to.
-            .onChange(of: reader.scrollTarget) { target in
-                guard let target else { return }
-                reader.scrollTarget = nil
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(target, anchor: .leading)
+            .onChange(of: reader.scrollRequest) { request in
+                guard let request else { return }
+                if request.animated {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(request.column, anchor: .leading)
+                    }
+                } else {
+                    proxy.scrollTo(request.column, anchor: .leading)
                 }
             }
         }

@@ -25,8 +25,9 @@ final class ArticleReaderModel: ObservableObject {
     @Published private(set) var matches: [ArticleFindMatch] = []
     /// Which of them is selected, as an index into `matches`.
     @Published private(set) var currentMatch = 0
-    /// Column the reader should be scrolled to; cleared once it is honoured.
-    @Published var scrollTarget: Int?
+    /// A column to bring into view, when there is one outstanding.
+    @Published private(set) var scrollRequest: ColumnScrollRequest?
+    private var scrollToken = 0
 
     /// The same matches, keyed by column, so drawing one column costs a
     /// dictionary lookup rather than a walk of every match in the article.
@@ -76,7 +77,7 @@ final class ArticleReaderModel: ObservableObject {
             // Paging to a neighbour is a fresh read: back to the masthead, and
             // the previous entry's find session does not follow it there.
             endFind()
-            scrollTarget = 0
+            requestScroll(to: 0, animated: false)
         } else {
             // Re-measured at a new size: the matches are in different places
             // now, but the reader is still looking at the same one.
@@ -156,6 +157,28 @@ final class ArticleReaderModel: ObservableObject {
 
     private func scrollToCurrent() {
         guard matches.indices.contains(currentMatch) else { return }
-        scrollTarget = matches[currentMatch].column
+        requestScroll(to: matches[currentMatch].column, animated: true)
     }
+
+    /// Ask the reader to bring a column into view.
+    ///
+    /// The token is what makes this reliable. A plain "scroll to column N"
+    /// property goes stale the moment the same N is asked for twice — paging
+    /// to one entry after another, each of which starts at column zero, or a
+    /// match found in the column already showing — because the value never
+    /// changes and so nothing downstream notices. Every request carries a
+    /// number of its own instead, so no two are ever equal.
+    private func requestScroll(to column: Int, animated: Bool) {
+        scrollToken += 1
+        scrollRequest = ColumnScrollRequest(column: column, animated: animated, token: scrollToken)
+    }
+}
+
+/// One request to bring a column into view. Paging jumps; stepping through
+/// find matches slides, so the reader can see where they were taken.
+struct ColumnScrollRequest: Equatable {
+    let column: Int
+    let animated: Bool
+    /// Distinguishes this request from an identical earlier one.
+    let token: Int
 }
