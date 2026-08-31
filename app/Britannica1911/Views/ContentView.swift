@@ -7,13 +7,6 @@ enum Tab: Hashable {
     case browse, notebook, listen, settings
 }
 
-/// Shared layout metrics so the browse index and article body line up in width.
-/// (Named to avoid colliding with SwiftUI's `Layout` protocol.)
-enum LayoutMetrics {
-    /// Reading-column width used for articles and (on iPad) the browse list.
-    static let articleContentWidth: CGFloat = 720
-}
-
 /// App-wide navigation coordinator. Lets deep views switch tabs (e.g. a recent
 /// search in the Notebook jumps to Browse; a new recording jumps to Listen).
 @MainActor

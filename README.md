@@ -35,13 +35,17 @@ app/
     Britannica1911App.swift         App entry point
     Views/                          ContentView (TabView), BrowseTab, ColumnReader,
                                     NotebookTab, ListenTab, SettingsTab, ArticleView,
-                                    SelectableArticleText, AuthorArticlesView, FlowLayout
+                                    ArticleColumnsView, SelectableArticleText,
+                                    AuthorArticlesView, FlowLayout
     Models/Article.swift            Value types (articles, notes, …)
     Database/Database.swift         Read-only SQLite/FTS5 access (system SQLite3)
     Store/LibraryStore.swift        Observable app state + debounced search
     Store/ColumnLayout.swift        Column geometry (per-device proportions),
                                     glyph metrics, line breaking
     Store/ColumnIndexStore.swift    Background pagination of a letter into columns
+    Store/ArticleColumnLayout.swift One article on the same column grid, plus
+                                    the in-article find matcher
+    Store/ArticleReaderModel.swift  Article pagination + find session (⌘F)
     Store/SettingsStore.swift       Appearance, font size, OpenAI credentials (Keychain)
     Store/ListenStore.swift         TTS synthesis + audio playlist / media player
     Assets.xcassets                 App icon slot + accent color
@@ -174,18 +178,30 @@ in serif for an encyclopedic feel.
     between launches), choose a **voice** once authenticated, and inspect a
     **debug log** of every OpenAI request and response (including errors).
 - **Read** — the single-article view, reached from a search hit, a cross
-  reference, a byline or an entry title in the columns. Articles render in a
-  serif body at your chosen text size, with a volume/page citation, a tappable
-  **contributor byline**, and **See also** cross-reference chips. The headword
-  takes the same **double-click to bookmark** as the columns. The body is
-  **freely selectable**: pick any passage and the edit menu offers **Send to
-  Notebook** alongside the usual Copy / Look Up / Share. Previous/next
-  navigation stays **pinned to the bottom** (in a sans-serif face) while the
-  article scrolls beneath it; moving
-  between neighbours **pages in place** with a directional slide (and a
-  horizontal **swipe**), so Back always returns to the list you came from. On
-  **iPad** the reading column is centered at article width, with the title
-  centered above it.
+  reference, a byline or an entry title in the columns. An entry is set in the
+  **same sideways columns as Browse**, at the same proportions — a third of a
+  screen wide on an iPad or a Mac, four-fifths of it on an iPhone. The first
+  column opens with the headword, its citation and a tappable **contributor
+  byline**; the text flows on from column to column; **See also** closes the
+  entry in a panel of its own. Every column carries a running head and where it
+  falls in the entry ("3 / 7"). An article short enough to fit the screen — one
+  or two columns — is **centred** in the pane rather than left hard against its
+  leading edge. The headword takes the same **double-click to bookmark** as the
+  Browse columns, and the body is **freely selectable**, with **Send to
+  Notebook** in the edit menu alongside the usual Copy / Look Up / Share.
+  Previous/next stays **pinned to the bottom** (in a sans-serif face) and
+  **pages in place**, so Back always returns to the list you came from; the
+  directional slide and the swipe that went with it are gone, since a
+  horizontal drag now belongs to the columns.
+- **Find in an article** — **⌘F** (or the magnifying glass in the article's
+  toolbar, for a device with no keyboard) opens a find bar over the entry.
+  Matches are highlighted in every column as you type, the bar counts them
+  ("3 of 12"), and **⌘G** / **⇧⌘G** — or Return, or the chevrons — step
+  between them, scrolling each match's column into view. **Esc** or **Done**
+  closes it. Matching ignores case and accents and reads a wrapped line break
+  as the space it stands for, so a phrase is found even where the column broke
+  it across two lines; a phrase split across a *column* break is not, which is
+  the same limitation selection has.
 
 The panes themselves have no title bars — the bottom tab bar's active state is
 label enough, and Browse offers a **Hide Keyboard** button (and swipe-to-dismiss)
@@ -251,6 +267,23 @@ so it re-wraps nothing. The cost is a text view per block of text on screen;
 titles stay plain `Text`, since a double-click there has to mean *bookmark*
 rather than *select word*. Selection is per block, so a sentence that runs
 across a column break is selected in two pieces.
+
+#### One article on the same grid
+
+A single entry is not the letter stream: it is finite, and small enough to wrap
+outright. So the reading view keeps the wrapped lines instead of throwing them
+away, and slices them onto the same line grid the Browse columns use
+(`ArticleColumnLayout`). Two things follow from having the whole entry in hand:
+
+* the run of columns has a **known width**, so an article that comes to one or
+  two columns is centred in the pane rather than left against its leading edge;
+* **⌘F** can count every match in the entry, not just the ones on screen — the
+  find searches each column's text exactly as that column draws it, which is
+  what makes a match a range the text view can highlight directly.
+
+The masthead — headword, citation, byline — is measured in whole line slots
+before the body is laid out, exactly as a title is in Browse, so the first
+column's text picks up on the same grid as every other column's.
 
 #### Phone proportions
 

@@ -1,33 +1,28 @@
 import SwiftUI
 
-/// A full article: title, byline, a selectable body, and cross-reference links.
+/// A full article: the entry set in the same sideways newspaper columns as the
+/// Browse pane (`ArticleColumnsView`), with an in-article **Find** over the
+/// top and previous/next pinned to the bottom.
 ///
-/// Previous/next are handled as in-place *paging* rather than stack pushes: the
-/// displayed article is swapped with a directional slide (next → right-to-left,
-/// previous → left-to-right) and a horizontal swipe does the same. The
-/// navigation stack is left untouched, so Back returns to the list the reader
-/// came from. Cross-reference and author links still push as new screens.
+/// Previous/next are handled as in-place *paging* rather than stack pushes:
+/// the displayed article is swapped beneath the same screen and the reader is
+/// returned to its first column, so Back still returns to the list they came
+/// from. Cross-reference and author links push as new screens, as before.
+///
+/// The directional slide (and the swipe that went with it) are gone: the
+/// reading surface itself now scrolls sideways, and a horizontal swipe belongs
+/// to the columns.
 struct ArticleView: View {
     let articleID: Int64
     @EnvironmentObject var store: LibraryStore
-    @EnvironmentObject var settings: SettingsStore
+
+    /// Owns both the article's pagination and the find session, so the bar up
+    /// here and the columns below it are always looking at the same state.
+    @StateObject private var reader = ArticleReaderModel()
 
     @State private var currentID: Int64
-    @State private var goingForward = true
     @State private var showNoteSaved = false
-
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var hSizeClass
-    #endif
-
-    /// Center the reading column and its title on iPad (regular width).
-    private var isRegular: Bool {
-        #if os(iOS)
-        return hSizeClass == .regular
-        #else
-        return false
-        #endif
-    }
+    @FocusState private var findFocused: Bool
 
     init(articleID: Int64) {
         self.articleID = articleID
@@ -36,11 +31,12 @@ struct ArticleView: View {
 
     var body: some View {
         let article = store.article(id: currentID)
-        return ZStack {
+        return Group {
             if let article {
-                articleScroll(article)
-                    .id(currentID)
-                    .transition(pagingTransition)
+                ArticleColumnsView(article: article,
+                                   crossReferences: store.crossReferences(for: article.id),
+                                   reader: reader,
+                                   onSendNote: { sendToNotebook($0, article: article) })
             } else {
                 Text("Article not found")
                     .foregroundStyle(.secondary)
@@ -51,53 +47,19 @@ struct ArticleView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-        // Prev/next stays pinned to the bottom; the article scrolls beneath it.
+        .toolbar { findToolbarItem }
+        .background { findKeyShortcut }
+        // The find bar sits above the columns rather than over them: a column
+        // is a full page of text, with nothing to spare under a floating bar.
+        .safeAreaInset(edge: .top, spacing: 0) { findBar }
+        // Prev/next stays pinned to the bottom; the columns run beneath it.
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let article { neighborBar(article) }
         }
-        // Swipe left → next, swipe right → previous (simultaneous with scrolling).
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 24)
-                .onEnded { value in
-                    let dx = value.translation.width, dy = value.translation.height
-                    guard abs(dx) > 80, abs(dx) > abs(dy) * 2 else { return }
-                    if dx < 0 { goNext() } else { goPrevious() }
-                }
-        )
         .overlay(alignment: .top) { noteSavedToast }
     }
 
-    private func articleScroll(_ article: Article) -> some View {
-        let refs = store.crossReferences(for: article.id)
-        let bodyText = article.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header(article)
-
-                if !article.authors.isEmpty {
-                    byline(article.authors)
-                }
-
-                bodyView(bodyText, article: article)
-
-                if !refs.isEmpty {
-                    crossReferenceSection(refs)
-                }
-            }
-            .frame(maxWidth: LayoutMetrics.articleContentWidth, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
-            .padding(24)
-        }
-    }
-
-    // MARK: - Body
-
-    private func bodyView(_ text: String, article: Article) -> some View {
-        SelectableArticleText(text: text, fontSize: settings.fontSize.pointSize) { selection in
-            sendToNotebook(selection, article: article)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+    // MARK: - Notebook
 
     private func sendToNotebook(_ selection: String, article: Article) {
         store.addNote(text: selection, articleSlug: article.slug, articleTitle: article.title)
@@ -121,97 +83,108 @@ struct ArticleView: View {
         }
     }
 
-    // MARK: - Paging
+    // MARK: - Find in article (⌘F)
 
-    private var pagingTransition: AnyTransition {
-        goingForward
-            ? .asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading))
-            : .asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .trailing))
+    @ToolbarContentBuilder
+    private var findToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button(action: beginFind) {
+                Label("Find in Article", systemImage: "magnifyingglass")
+            }
+            .help("Find in Article (⌘F)")
+        }
     }
+
+    /// ⌘F itself. The shortcut hangs off a button of its own rather than the
+    /// toolbar's, so it is registered whether or not the platform is currently
+    /// showing that toolbar.
+    private var findKeyShortcut: some View {
+        Button("Find in Article", action: beginFind)
+            .keyboardShortcut("f", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+    }
+
+    /// The find bar: what to look for, how many matches there are, and the way
+    /// between them. Stepping to a match scrolls its column into view and
+    /// paints it (see `ArticleFind`).
+    @ViewBuilder
+    private var findBar: some View {
+        if reader.isFinding {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Find in article", text: $reader.query)
+                        .textFieldStyle(.plain)
+                        .focused($findFocused)
+                        .submitLabel(.search)
+                        .onSubmit { reader.nextMatch() }
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                    if let summary = reader.matchSummary {
+                        Text(summary)
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    findStep(systemImage: "chevron.up", label: "Previous match (⇧⌘G)",
+                             action: reader.previousMatch)
+                        .keyboardShortcut("g", modifiers: [.command, .shift])
+                    findStep(systemImage: "chevron.down", label: "Next match (⌘G)",
+                             action: reader.nextMatch)
+                        .keyboardShortcut("g", modifiers: .command)
+                    Button("Done", action: endFind)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .keyboardShortcut(.cancelAction)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                Divider()
+            }
+            .background(.bar)
+        }
+    }
+
+    private func findStep(systemImage: String, label: String,
+                          action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(reader.matches.isEmpty ? Color.secondary : Color.accentColor)
+        .disabled(reader.matches.isEmpty)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private func beginFind() {
+        reader.beginFind()
+        // The field only exists once the bar is in the hierarchy.
+        DispatchQueue.main.async { findFocused = true }
+    }
+
+    private func endFind() {
+        findFocused = false
+        reader.endFind()
+    }
+
+    // MARK: - Paging
 
     private func goNext() {
         guard let next = store.article(id: currentID)?.next,
               let id = store.resolve(next) else { return }
-        goingForward = true
-        withAnimation(.easeInOut(duration: 0.28)) { currentID = id }
+        currentID = id
     }
 
     private func goPrevious() {
         guard let previous = store.article(id: currentID)?.previous,
               let id = store.resolve(previous) else { return }
-        goingForward = false
-        withAnimation(.easeInOut(duration: 0.28)) { currentID = id }
-    }
-
-    // MARK: - Header & byline
-
-    /// The headword, with the same keeping gesture as the Browse columns:
-    /// double-click to bookmark, and a red bookmark shows once it is kept.
-    ///
-    /// The title is a control rather than selectable text — a double-click has
-    /// to mean one thing, and the headword is repeated at the head of the body
-    /// below, which *is* selectable.
-    private func header(_ article: Article) -> some View {
-        VStack(alignment: isRegular ? .center : .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(article.title)
-                    .font(.system(.largeTitle, design: .serif).weight(.bold))
-                    .multilineTextAlignment(isRegular ? .center : .leading)
-                if store.isBookmarked(article.slug) {
-                    Image(systemName: "bookmark.fill")
-                        .font(.title3)
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("Bookmarked")
-                }
-            }
-                .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    store.toggleBookmark(slug: article.slug, title: article.title)
-                }
-                .bookmarkable(slug: article.slug, title: article.title)
-            if let citation = citation(article) {
-                Text(citation)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: isRegular ? .center : .leading)
-            }
-        }
-    }
-
-    private func citation(_ article: Article) -> String? {
-        var parts = ["Encyclopædia Britannica, 11th ed."]
-        if let volume = article.volume { parts.append("Volume \(volume)") }
-        if let pages = article.pages { parts.append("p. \(pages)") }
-        return parts.count > 1 ? parts.joined(separator: " · ") : parts.first
-    }
-
-    /// Tappable contributor byline. Each author leads to their collected articles.
-    private func byline(_ authors: [ArticleAuthor]) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text("By")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            FlowLayout(spacing: 6) {
-                ForEach(authors) { author in
-                    NavigationLink(value: AuthorRef(id: author.id, name: author.name)) {
-                        HStack(spacing: 4) {
-                            Text(author.name)
-                            if let initials = author.initials {
-                                Text(initials)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
-                        .foregroundStyle(Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
+        currentID = id
     }
 
     // MARK: - Bottom prev/next bar
@@ -260,44 +233,5 @@ struct ArticleView: View {
             .disabled(!resolved)
             .foregroundStyle(resolved ? Color.accentColor : Color.secondary)
         }
-    }
-
-    // MARK: - Cross references
-
-    private func crossReferenceSection(_ refs: [CrossReference]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Divider()
-            Text("See also")
-                .font(.headline)
-            FlowLayout(spacing: 8) {
-                ForEach(refs) { ref in
-                    crossReferenceChip(ref)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func crossReferenceChip(_ ref: CrossReference) -> some View {
-        if let targetID = store.resolve(ref) {
-            NavigationLink(value: targetID) {
-                chipLabel(ref.toTitle, resolved: true)
-            }
-            .buttonStyle(.plain)
-        } else {
-            // Referenced entry is not in the corpus (e.g. not yet scraped).
-            chipLabel(ref.toTitle, resolved: false)
-        }
-    }
-
-    private func chipLabel(_ title: String, resolved: Bool) -> some View {
-        Text(title)
-            .font(.callout)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                Capsule().fill(resolved ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
-            )
-            .foregroundStyle(resolved ? Color.accentColor : Color.secondary)
     }
 }

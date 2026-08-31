@@ -24,6 +24,9 @@ struct SelectableArticleText: UIViewRepresentable {
     let text: String
     let fontSize: CGFloat
     var lineSpacing: CGFloat = 4
+    /// Every occurrence of an in-article find, and the one the reader is on.
+    var highlights: [NSRange] = []
+    var currentHighlight: NSRange? = nil
     var onSendToNotebook: (String) -> Void
 
     func makeUIView(context: Context) -> UITextView {
@@ -39,8 +42,9 @@ struct SelectableArticleText: UIViewRepresentable {
         textView.delegate = context.coordinator
         textView.setContentCompressionResistancePriority(.required, for: .vertical)
         // Don't let the text view start a drag-and-drop session on a horizontal
-        // pan; that would swallow the article's swipe-to-page gesture and the
-        // column reader's sideways scroll. Selection (long-press) still works.
+        // pan; that would swallow the sideways scroll of the columns it sits
+        // in, in Browse and in an article alike. Selection (long-press) still
+        // works.
         textView.textDragInteraction?.isEnabled = false
         return textView
     }
@@ -49,9 +53,12 @@ struct SelectableArticleText: UIViewRepresentable {
         context.coordinator.onSendToNotebook = onSendToNotebook
         // Only rebuild the attributed text when it actually changes. Otherwise a
         // frequent re-render would reset the user's in-progress selection.
-        if context.coordinator.applied != AppliedText(text: text, fontSize: fontSize, lineSpacing: lineSpacing) {
-            textView.attributedText = Self.attributed(text, fontSize: fontSize, lineSpacing: lineSpacing)
-            context.coordinator.applied = AppliedText(text: text, fontSize: fontSize, lineSpacing: lineSpacing)
+        let applied = AppliedText(text: text, fontSize: fontSize, lineSpacing: lineSpacing,
+                                  highlights: highlights, currentHighlight: currentHighlight)
+        if context.coordinator.applied != applied {
+            textView.attributedText = Self.attributed(text, fontSize: fontSize, lineSpacing: lineSpacing,
+                                                      highlights: highlights, currentHighlight: currentHighlight)
+            context.coordinator.applied = applied
         }
     }
 
@@ -66,15 +73,19 @@ struct SelectableArticleText: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(onSendToNotebook: onSendToNotebook) }
 
-    static func attributed(_ text: String, fontSize: CGFloat, lineSpacing: CGFloat) -> NSAttributedString {
+    static func attributed(_ text: String, fontSize: CGFloat, lineSpacing: CGFloat,
+                           highlights: [NSRange] = [],
+                           currentHighlight: NSRange? = nil) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = lineSpacing
         paragraph.lineBreakMode = .byWordWrapping
-        return NSAttributedString(string: text, attributes: [
+        let string = NSMutableAttributedString(string: text, attributes: [
             .font: ReaderFont.serif(size: fontSize),
             .foregroundColor: UIColor.label,
             .paragraphStyle: paragraph,
         ])
+        string.paintFindMatches(highlights, current: currentHighlight)
+        return string
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -105,6 +116,9 @@ struct SelectableArticleText: NSViewRepresentable {
     let text: String
     let fontSize: CGFloat
     var lineSpacing: CGFloat = 4
+    /// Every occurrence of an in-article find, and the one the reader is on.
+    var highlights: [NSRange] = []
+    var currentHighlight: NSRange? = nil
     var onSendToNotebook: (String) -> Void
 
     func makeNSView(context: Context) -> NSTextView {
@@ -127,10 +141,12 @@ struct SelectableArticleText: NSViewRepresentable {
 
     func updateNSView(_ textView: NSTextView, context: Context) {
         context.coordinator.onSendToNotebook = onSendToNotebook
-        let applied = AppliedText(text: text, fontSize: fontSize, lineSpacing: lineSpacing)
+        let applied = AppliedText(text: text, fontSize: fontSize, lineSpacing: lineSpacing,
+                                  highlights: highlights, currentHighlight: currentHighlight)
         if context.coordinator.applied != applied {
             textView.textStorage?.setAttributedString(
-                Self.attributed(text, fontSize: fontSize, lineSpacing: lineSpacing))
+                Self.attributed(text, fontSize: fontSize, lineSpacing: lineSpacing,
+                                highlights: highlights, currentHighlight: currentHighlight))
             context.coordinator.applied = applied
         }
     }
@@ -148,15 +164,19 @@ struct SelectableArticleText: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(onSendToNotebook: onSendToNotebook) }
 
-    static func attributed(_ text: String, fontSize: CGFloat, lineSpacing: CGFloat) -> NSAttributedString {
+    static func attributed(_ text: String, fontSize: CGFloat, lineSpacing: CGFloat,
+                           highlights: [NSRange] = [],
+                           currentHighlight: NSRange? = nil) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = lineSpacing
         paragraph.lineBreakMode = .byWordWrapping
-        return NSAttributedString(string: text, attributes: [
+        let string = NSMutableAttributedString(string: text, attributes: [
             .font: ReaderFont.serif(size: fontSize),
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: paragraph,
         ])
+        string.paintFindMatches(highlights, current: currentHighlight)
+        return string
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -198,4 +218,59 @@ struct AppliedText: Equatable {
     let text: String
     let fontSize: CGFloat
     let lineSpacing: CGFloat
+    var highlights: [NSRange] = []
+    var currentHighlight: NSRange? = nil
+
+    static func == (lhs: AppliedText, rhs: AppliedText) -> Bool {
+        guard lhs.text == rhs.text,
+              lhs.fontSize == rhs.fontSize,
+              lhs.lineSpacing == rhs.lineSpacing,
+              lhs.highlights.count == rhs.highlights.count,
+              sameRange(lhs.currentHighlight, rhs.currentHighlight) else { return false }
+        for (left, right) in zip(lhs.highlights, rhs.highlights) where !NSEqualRanges(left, right) {
+            return false
+        }
+        return true
+    }
+
+    private static func sameRange(_ lhs: NSRange?, _ rhs: NSRange?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): return true
+        case let (left?, right?): return NSEqualRanges(left, right)
+        default: return false
+        }
+    }
+}
+
+#if os(iOS)
+typealias PlatformColor = UIColor
+#elseif os(macOS)
+typealias PlatformColor = NSColor
+#endif
+
+private extension NSMutableAttributedString {
+    /// Paint the in-article find: every match in yellow, the one the reader is
+    /// on in orange. Both are drawn with dark text so they stay legible under
+    /// either appearance.
+    ///
+    /// Ranges that fall outside the string are skipped rather than trusted —
+    /// a highlight computed against a column that has since been re-measured
+    /// must never take the reader down with it.
+    func paintFindMatches(_ ranges: [NSRange], current: NSRange?) {
+        guard !ranges.isEmpty || current != nil else { return }
+        paint(ranges, background: PlatformColor.systemYellow.withAlphaComponent(0.85))
+        if let current {
+            paint([current], background: PlatformColor.systemOrange.withAlphaComponent(0.95))
+        }
+    }
+
+    func paint(_ ranges: [NSRange], background: PlatformColor) {
+        let bounds = NSRange(location: 0, length: length)
+        for range in ranges {
+            guard range.length > 0,
+                  NSIntersectionRange(range, bounds).length == range.length else { continue }
+            addAttribute(.backgroundColor, value: background, range: range)
+            addAttribute(.foregroundColor, value: PlatformColor.black, range: range)
+        }
+    }
 }

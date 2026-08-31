@@ -27,6 +27,9 @@
 		191100000000000000000D27 /* ColumnLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C27 /* ColumnLayout.swift */; };
 		191100000000000000000D28 /* ColumnIndexStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C28 /* ColumnIndexStore.swift */; };
 		191100000000000000000D29 /* ColumnReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C29 /* ColumnReader.swift */; };
+		191100000000000000000D30 /* ArticleColumnLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C30 /* ArticleColumnLayout.swift */; };
+		191100000000000000000D31 /* ArticleReaderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C31 /* ArticleReaderModel.swift */; };
+		191100000000000000000D32 /* ArticleColumnsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191100000000000000000C32 /* ArticleColumnsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +54,9 @@
 		191100000000000000000C27 /* ColumnLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnLayout.swift; sourceTree = "<group>"; };
 		191100000000000000000C28 /* ColumnIndexStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnIndexStore.swift; sourceTree = "<group>"; };
 		191100000000000000000C29 /* ColumnReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColumnReader.swift; sourceTree = "<group>"; };
+		191100000000000000000C30 /* ArticleColumnLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleColumnLayout.swift; sourceTree = "<group>"; };
+		191100000000000000000C31 /* ArticleReaderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleReaderModel.swift; sourceTree = "<group>"; };
+		191100000000000000000C32 /* ArticleColumnsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleColumnsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,6 +124,8 @@
 				191100000000000000000C26 /* ListenStore.swift */,
 				191100000000000000000C27 /* ColumnLayout.swift */,
 				191100000000000000000C28 /* ColumnIndexStore.swift */,
+				191100000000000000000C30 /* ArticleColumnLayout.swift */,
+				191100000000000000000C31 /* ArticleReaderModel.swift */,
 			);
 			path = Store;
 			sourceTree = "<group>";
@@ -135,6 +143,7 @@
 				191100000000000000000C11 /* AuthorArticlesView.swift */,
 				191100000000000000000C05 /* FlowLayout.swift */,
 				191100000000000000000C29 /* ColumnReader.swift */,
+				191100000000000000000C32 /* ArticleColumnsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -227,6 +236,9 @@
 				191100000000000000000D27 /* ColumnLayout.swift in Sources */,
 				191100000000000000000D28 /* ColumnIndexStore.swift in Sources */,
 				191100000000000000000D29 /* ColumnReader.swift in Sources */,
+				191100000000000000000D30 /* ArticleColumnLayout.swift in Sources */,
+				191100000000000000000D31 /* ArticleReaderModel.swift in Sources */,
+				191100000000000000000D32 /* ArticleColumnsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
