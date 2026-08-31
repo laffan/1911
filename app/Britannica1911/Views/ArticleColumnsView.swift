@@ -121,8 +121,14 @@ struct ArticleColumnsView: View {
 
 // MARK: - One column of an article
 
-/// A single column of an article: the masthead if it opens the entry, its
-/// slice of the wrapped text, and a running foot.
+/// A single column of an article: the masthead if it opens the entry, and its
+/// slice of the wrapped text.
+///
+/// No running foot, unlike Browse. There a column's citation says which of
+/// fifty thousand entries you have flowed into; here there is only ever the
+/// one, named at the head of the first column. The height it would have taken
+/// is left at the foot of the column, where a deeper bottom margin is how a
+/// page has always been set.
 ///
 /// Every block is framed at an exact multiple of the line height, exactly as
 /// in the Browse columns, so the grid stays true down the column and the next
@@ -153,7 +159,6 @@ private struct ArticleColumnCell: View {
                 bodyBlock
             }
             Spacer(minLength: 0)
-            footer
         }
         .padding(.horizontal, style.horizontalInset)
         .padding(.top, style.topInset)
@@ -298,29 +303,5 @@ private struct ArticleColumnCell: View {
                 Capsule().fill(resolved ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
             )
             .foregroundStyle(resolved ? Color.accentColor : Color.secondary)
-    }
-
-    // MARK: Footer
-
-    /// A running head, and where in the entry this column falls — the reader's
-    /// only sense of length once the article scrolls sideways.
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Rectangle()
-                .fill(Color.secondary.opacity(0.25))
-                .frame(height: 0.5)
-            HStack(spacing: 6) {
-                Text(column.isCrossReferences ? "See also" : article.title.uppercased())
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 4)
-                Text("\(column.index + 1) / \(layout.columns.count)")
-                    .lineLimit(1)
-                    .monospacedDigit()
-            }
-            .font(.system(size: style.footerFontSize))
-            .foregroundStyle(.secondary)
-        }
-        .frame(width: style.textWidth, height: style.footerHeight, alignment: .bottomLeading)
     }
 }

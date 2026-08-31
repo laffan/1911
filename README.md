@@ -183,10 +183,11 @@ in serif for an encyclopedic feel.
   screen wide on an iPad or a Mac, four-fifths of it on an iPhone. The first
   column opens with the headword, its citation and a tappable **contributor
   byline**; the text flows on from column to column; **See also** closes the
-  entry in a panel of its own. Every column carries a running head and where it
-  falls in the entry ("3 / 7"). An article short enough to fit the screen — one
-  or two columns — is **centred** in the pane rather than left hard against its
-  leading edge. The headword takes the same **double-click to bookmark** as the
+  entry in a panel of its own. The columns carry no running foot — Browse needs
+  one to say which of fifty thousand entries has flowed into a column, where an
+  article is named once at its head. An article short enough to fit the
+  screen — one or two columns — is **centred** in the pane rather than left
+  hard against its leading edge. The headword takes the same **double-click to bookmark** as the
   Browse columns, and the body is **freely selectable**, with **Send to
   Notebook** in the edit menu alongside the usual Copy / Look Up / Share.
   Previous/next stays **pinned to the bottom** (in a sans-serif face) and
