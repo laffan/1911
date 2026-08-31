@@ -200,7 +200,8 @@ struct ArticleMasthead {
         guard lineHeight > 0 else { return 1 }
         let bounds = NSAttributedString(string: text, attributes: [.font: font])
             .boundingRect(with: CGSize(width: width, height: .greatestFiniteMagnitude),
-                          options: [.usesLineFragmentOrigin, .usesFontLeading])
+                          options: [.usesLineFragmentOrigin, .usesFontLeading],
+                          context: nil)
         return min(max(1, Int((bounds.height / lineHeight).rounded())), limit)
     }
 
@@ -264,10 +265,19 @@ enum ArticleFind {
         return found
     }
 
-    /// Line breaks and paragraph indents read as ordinary spaces.
+    /// Line breaks and paragraph indents read as ordinary spaces. Each is a
+    /// single UTF-16 unit, as a space is, so the copy lines up with the
+    /// original character for character.
     private static func flattened(_ text: String) -> String {
-        String(text.map { character in
-            character == "\n" || character == TextColumnizer.indentCharacter ? " " : character
-        })
+        var out = String()
+        out.reserveCapacity(text.count)
+        for character in text {
+            if character == "\n" || character == TextColumnizer.indentCharacter {
+                out.append(" ")
+            } else {
+                out.append(character)
+            }
+        }
+        return out
     }
 }
